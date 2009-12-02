@@ -132,6 +132,7 @@
 #else
 #define DEBUG16(x)	do {} while (0)
 #endif
+
 /*
  * Firmware Dump structure definition
  */

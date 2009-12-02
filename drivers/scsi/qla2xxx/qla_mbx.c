@@ -3643,3 +3643,114 @@ qla2x00_write_ram_word(scsi_qla_host_t *vha, uint32_t risc_addr, uint32_t data)
 
 	return rval;
 }
+
+int
+qla2x00_loopback_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mresp)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+	uint32_t iter_cnt = 0x1;
+
+	DEBUG11(printk("scsi(%ld): entered.\n", vha->host_no));
+
+	memset(mcp->mb, 0 , sizeof(mcp->mb));
+	mcp->mb[0] = MBC_DIAGNOSTIC_LOOP_BACK;
+	mcp->mb[1] = mreq->options | BIT_6;	// BIT_6 specifies 64 bit addressing
+
+	/* transfer count */
+	mcp->mb[10] = LSW(mreq->transfer_size);
+	mcp->mb[11] = MSW(mreq->transfer_size);
+
+	/* send data address */
+	mcp->mb[14] = LSW(mreq->send_dma);
+	mcp->mb[15] = MSW(mreq->send_dma);
+	mcp->mb[20] = LSW(MSD(mreq->send_dma));
+	mcp->mb[21] = MSW(MSD(mreq->send_dma));
+
+	/* recieve data address */
+	mcp->mb[16] = LSW(mreq->rcv_dma);
+	mcp->mb[17] = MSW(mreq->rcv_dma);
+	mcp->mb[6] = LSW(MSD(mreq->rcv_dma));
+	mcp->mb[7] = MSW(MSD(mreq->rcv_dma));
+
+	/* Iteration count */
+	mcp->mb[18] = LSW(iter_cnt);
+	mcp->mb[19] = MSW(iter_cnt);
+
+	mcp->out_mb = MBX_21|MBX_20|MBX_19|MBX_18|MBX_17|MBX_16|MBX_15|
+	    MBX_14|MBX_13|MBX_12|MBX_11|MBX_10|MBX_7|MBX_6|MBX_1|MBX_0;
+	mcp->in_mb = MBX_19|MBX_18|MBX_3|MBX_2|MBX_1|MBX_0;
+
+	mcp->buf_size = mreq->transfer_size;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = MBX_DMA_OUT|MBX_DMA_IN|IOCTL_CMD;
+
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval != QLA_SUCCESS) {
+		DEBUG2(printk(KERN_WARNING
+		    "(%ld): failed=%x mb[0]=0x%x "
+			"mb[1]=0x%x mb[2]=0x%x mb[3]=0x%x mb[18]=0x%x mb[19]=0x%x. \n", vha->host_no, rval,
+			mcp->mb[0], mcp->mb[1], mcp->mb[2], mcp->mb[3], mcp->mb[18], mcp->mb[19]));
+	} else {
+		DEBUG2(printk(KERN_WARNING
+		    "scsi(%ld): done.\n", vha->host_no));
+	}
+
+	/* Copy mailbox information */
+	memcpy( mresp, mcp->mb, 64);
+	mresp[3] = mcp->mb[18];
+	mresp[4] = mcp->mb[19];
+	return rval;
+}
+
+int
+qla2x00_echo_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mresp)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+
+	DEBUG11(printk("scsi(%ld): entered.\n", vha->host_no));
+
+	memset(mcp->mb, 0 , sizeof(mcp->mb));
+	mcp->mb[0] = MBC_DIAGNOSTIC_ECHO;
+	mcp->mb[1] = mreq->options | BIT_6;	/* BIT_6 specifies 64bit address */
+
+	mcp->mb[2] = IS_QLA81XX(vha->hw) ? vha->fcoe_fcf_idx : 0;
+	mcp->mb[16] = LSW(mreq->rcv_dma);
+	mcp->mb[17] = MSW(mreq->rcv_dma);
+	mcp->mb[6] = LSW(MSD(mreq->rcv_dma));
+	mcp->mb[7] = MSW(MSD(mreq->rcv_dma));
+
+	mcp->mb[10] = LSW(mreq->transfer_size);
+
+	mcp->mb[14] = LSW(mreq->send_dma);
+	mcp->mb[15] = MSW(mreq->send_dma);
+	mcp->mb[20] = LSW(MSD(mreq->send_dma));
+	mcp->mb[21] = MSW(MSD(mreq->send_dma));
+
+	mcp->out_mb = MBX_21|MBX_20|MBX_17|MBX_16|MBX_15|
+	    MBX_14|MBX_10|MBX_7|MBX_6|MBX_2|MBX_1|MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
+
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = MBX_DMA_OUT|MBX_DMA_IN|IOCTL_CMD;
+	mcp->buf_size = mreq->transfer_size;
+
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval != QLA_SUCCESS) {
+		DEBUG2(printk(KERN_WARNING
+		    "(%ld): failed=%x mb[0]=0x%x mb[1]=0x%x.\n",
+		    vha->host_no, rval, mcp->mb[0], mcp->mb[1]));
+	} else {
+		DEBUG2(printk(KERN_WARNING
+		    "scsi(%ld): done.\n", vha->host_no));
+	}
+
+	/* Copy mailbox information */
+	memcpy( mresp, mcp->mb, 32);
+	return rval;
+}

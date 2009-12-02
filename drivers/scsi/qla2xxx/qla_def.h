@@ -31,6 +31,7 @@
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_transport_fc.h>
+#include <scsi/scsi_bsg_fc.h>
 
 #define QLA2XXX_DRIVER_NAME  "qla2xxx"
 
@@ -226,6 +227,27 @@ struct srb_logio {
 #define SRB_LOGIN_COND_PLOGI	BIT_1
 #define SRB_LOGIN_SKIP_PRLI	BIT_2
 	uint16_t flags;
+};
+
+struct srb_bsg_ctx {
+#define SRB_ELS_CMD_RPT 3
+#define SRB_ELS_CMD_HST 4
+#define SRB_CT_CMD 5
+	uint16_t type;
+};
+
+struct srb_bsg {
+	struct srb_bsg_ctx ctx;
+	struct fc_bsg_job *bsg_job;
+};
+
+struct msg_echo_lb {
+	dma_addr_t send_dma;
+	dma_addr_t rcv_dma;
+	uint16_t req_sg_cnt;
+	uint16_t rsp_sg_cnt;
+	uint16_t options;
+	uint32_t transfer_size;
 };
 
 /*
@@ -522,6 +544,8 @@ typedef struct {
 #define MBA_DISCARD_RND_FRAME	0x8048	/* discard RND frame due to error. */
 #define MBA_REJECTED_FCP_CMD	0x8049	/* rejected FCP_CMD. */
 
+/* ISP mailbox loopback echo diagnostic error code */
+#define MBS_LB_RESET	0x17
 /*
  * Firmware options 1, 2, 3.
  */

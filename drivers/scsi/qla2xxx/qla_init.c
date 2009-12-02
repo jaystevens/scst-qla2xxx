@@ -62,7 +62,7 @@ qla2x00_ctx_sp_timeout(unsigned long __data)
 	ctx->free(sp);
 }
 
-static void
+void
 qla2x00_ctx_sp_free(srb_t *sp)
 {
 	struct srb_ctx *ctx = sp->ctx;
@@ -2205,7 +2205,7 @@ qla2x00_rport_del(void *data)
  *
  * Returns a pointer to the allocated fcport, or NULL, if none available.
  */
-static fc_port_t *
+fc_port_t *
 qla2x00_alloc_fcport(scsi_qla_host_t *vha, gfp_t flags)
 {
 	fc_port_t *fcport;
