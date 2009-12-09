@@ -1998,7 +1998,7 @@ qla2x00_process_ct(struct fc_bsg_job *bsg_job)
 			loop_id = cpu_to_le16(NPH_SNS);
 			break;
 		case 0xFA:
-			loop_id = cpu_to_le16(NPH_MGMT_SERVER);
+			loop_id = vha->mgmt_svr_loop_id;
 			break;
 		default:
 			DEBUG2(qla_printk(KERN_INFO, ha, "Unknown loop id: %x\n", loop_id));
