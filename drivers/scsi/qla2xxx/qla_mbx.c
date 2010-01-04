@@ -3680,6 +3680,8 @@ qla2x00_loopback_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *
 
 	mcp->out_mb = MBX_21|MBX_20|MBX_19|MBX_18|MBX_17|MBX_16|MBX_15|
 	    MBX_14|MBX_13|MBX_12|MBX_11|MBX_10|MBX_7|MBX_6|MBX_1|MBX_0;
+	if (IS_QLA81XX(vha->hw))
+		mcp->out_mb |= MBX_2;
 	mcp->in_mb = MBX_19|MBX_18|MBX_3|MBX_2|MBX_1|MBX_0;
 
 	mcp->buf_size = mreq->transfer_size;
@@ -3711,14 +3713,16 @@ qla2x00_echo_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mres
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
+	struct qla_hw_data *ha = vha->hw;
 
 	DEBUG11(printk("scsi(%ld): entered.\n", vha->host_no));
 
 	memset(mcp->mb, 0 , sizeof(mcp->mb));
 	mcp->mb[0] = MBC_DIAGNOSTIC_ECHO;
 	mcp->mb[1] = mreq->options | BIT_6;	/* BIT_6 specifies 64bit address */
-
-	mcp->mb[2] = IS_QLA81XX(vha->hw) ? vha->fcoe_fcf_idx : 0;
+	if (IS_QLA81XX(ha))
+		mcp->mb[1] |= BIT_15;
+	mcp->mb[2] = IS_QLA81XX(ha) ? vha->fcoe_fcf_idx : 0;
 	mcp->mb[16] = LSW(mreq->rcv_dma);
 	mcp->mb[17] = MSW(mreq->rcv_dma);
 	mcp->mb[6] = LSW(MSD(mreq->rcv_dma));
@@ -3732,8 +3736,15 @@ qla2x00_echo_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mres
 	mcp->mb[21] = MSW(MSD(mreq->send_dma));
 
 	mcp->out_mb = MBX_21|MBX_20|MBX_17|MBX_16|MBX_15|
-	    MBX_14|MBX_10|MBX_7|MBX_6|MBX_2|MBX_1|MBX_0;
-	mcp->in_mb = MBX_1|MBX_0;
+	    MBX_14|MBX_10|MBX_7|MBX_6|MBX_1|MBX_0;
+	if (IS_QLA81XX(ha))
+		mcp->out_mb |= MBX_2;
+
+	mcp->in_mb = MBX_0;
+	if (IS_QLA24XX_TYPE(ha) || IS_QLA25XX(ha) || IS_QLA81XX(ha))
+		mcp->in_mb |= MBX_1;
+	if (IS_QLA81XX(ha))
+		mcp->in_mb |= MBX_3;
 
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = MBX_DMA_OUT|MBX_DMA_IN|IOCTL_CMD;
