@@ -3754,36 +3754,3 @@ qla2x00_echo_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mres
 	memcpy( mresp, mcp->mb, 32);
 	return rval;
 }
-
-int
-qla2x00_get_data_rate(scsi_qla_host_t *vha)
-{
-	int rval;
-	mbx_cmd_t mc;
-	mbx_cmd_t *mcp = &mc;
-	struct qla_hw_data *ha = vha->hw;
-
-	if (!IS_FWI2_CAPABLE(ha))
-		return QLA_FUNCTION_FAILED;
-
-	DEBUG11(printk(KERN_INFO "%s(%ld): entered.\n", __func__, vha->host_no));
-
-	mcp->mb[0] = MBC_DATA_RATE;
-	mcp->mb[1] = 0;
-	mcp->out_mb = MBX_1|MBX_0;
-	mcp->in_mb = MBX_2|MBX_1|MBX_0;
-	mcp->tov = MBX_TOV_SECONDS;
-	mcp->flags = 0;
-	rval = qla2x00_mailbox_command(vha, mcp);
-	if (rval != QLA_SUCCESS) {
-		DEBUG2_3_11(printk(KERN_INFO "%s(%ld): failed=%x mb[0]=%x.\n",
-		    __func__, vha->host_no, rval, mcp->mb[0]));
-	} else {
-		DEBUG11(printk(KERN_INFO
-		    "%s(%ld): done.\n", __func__, vha->host_no));
-		if (mcp->mb[1] != 0x7)
-			ha->link_data_rate = mcp->mb[1];
-	}
-
-	return rval;
-}
