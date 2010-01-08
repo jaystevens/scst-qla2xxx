@@ -2071,11 +2071,18 @@ qla2x00_process_vendor_specific(struct fc_bsg_job *bsg_job)
 	scsi_qla_host_t *vha = shost_priv(host);
 	struct qla_hw_data *ha = vha->hw;
 	int rval;
+	uint8_t command_sent;
 	uint32_t vendor_cmd;
 	char *type;
 	struct msg_echo_lb elreq;
 	uint16_t response[MAILBOX_REGISTER_COUNT];
 	uint8_t* fw_sts_ptr;
+	uint8_t *req_data;
+	dma_addr_t req_data_dma;
+	uint32_t req_data_len;
+	uint8_t *rsp_data;
+	dma_addr_t rsp_data_dma;
+	uint32_t rsp_data_len;
 
 	if (test_bit(ISP_ABORT_NEEDED, &vha->dpc_flags) ||
 		test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags) ||
@@ -2109,10 +2116,21 @@ qla2x00_process_vendor_specific(struct fc_bsg_job *bsg_job)
 		rval = -EAGAIN;
                 goto done_unmap_sg;
 	}
+	req_data_len = rsp_data_len = bsg_job->request_payload.payload_len;
+	req_data = dma_alloc_coherent(&ha->pdev->dev, req_data_len,
+		&req_data_dma, GFP_KERNEL);
 
-	elreq.send_dma = sg_dma_address(bsg_job->request_payload.sg_list);
-	elreq.rcv_dma = sg_dma_address(bsg_job->reply_payload.sg_list);
-	elreq.transfer_size = bsg_job->request_payload.payload_len;
+	rsp_data = dma_alloc_coherent(&ha->pdev->dev, rsp_data_len,
+		&rsp_data_dma, GFP_KERNEL);
+
+	/* Copy the request buffer in req_data now */
+	sg_copy_to_buffer(bsg_job->request_payload.sg_list,
+		bsg_job->request_payload.sg_cnt, req_data,
+		req_data_len);
+
+	elreq.send_dma = req_data_dma;
+	elreq.rcv_dma = rsp_data_dma;
+	elreq.transfer_size = req_data_len;
 
 	/* Vendor cmd : loopback or ECHO diagnostic
 	 * Options:
@@ -2122,67 +2140,99 @@ qla2x00_process_vendor_specific(struct fc_bsg_job *bsg_job)
 	vendor_cmd = bsg_job->request->rqst_data.h_vendor.vendor_cmd[0];
 	elreq.options = *(((uint32_t*)bsg_job->request->rqst_data.h_vendor.vendor_cmd) + 1);
 
-	if ( bsg_job ->request->rqst_data.h_vendor.vendor_cmd[0] == MBC_DIAGNOSTIC_LOOP_BACK) {
-		type = "FC_BSG_HST_VENDOR_LOOPBACK";
+	switch (bsg_job->request->rqst_data.h_vendor.vendor_cmd[0]) {
+	case QL_VND_LOOPBACK:
+		if (ha->current_topology != ISP_CFG_F) {
+			type = "FC_BSG_HST_VENDOR_LOOPBACK";
 
-		if ((elreq.req_sg_cnt > 1) || (elreq.rsp_sg_cnt > 1)) {
+			if ((IS_QLA81XX(ha)) &&
+			    ((elreq.options == 0) || (elreq.options == 2))) {
+				DEBUG2(qla_printk(KERN_INFO, ha, "scsi(%ld)"
+				    "loopback option:0x%x not supported\n",
+				    vha->host_no, elreq.options));
+				rval = -EINVAL;
+				goto done_unmap_sg;
+			}
+
 			DEBUG2(qla_printk(KERN_INFO, ha,
-				"scsi(%ld) SG list(more than one SG) is not supported for loopback\n", vha->host_no));
-			rval = -EAGAIN;
-			goto done_unmap_sg;
-		}
-
-		if ((IS_QLA81XX(ha)) &&
-			((elreq.options == 0) || (elreq.options == 2))) {
+			    "scsi(%ld) bsg rqst type: %s vendor rqst type: "
+			    "%x options: %x.\n", vha->host_no, type,
+			    vendor_cmd, elreq.options));
 			DEBUG2(qla_printk(KERN_INFO, ha,
-				"scsi(%ld) loopback option:0x%x not supported\n", vha->host_no, elreq.options));
-			rval = -EINVAL;
-			goto done_unmap_sg;
+			    "scsi(%ld) tx_addr: 0x%llx rx_addr: 0x%llx "
+			    "tx_sg_cnt: %x rx_sg_cnt: %x\n", vha->host_no,
+			    elreq.send_dma, elreq.rcv_dma, elreq.req_sg_cnt,
+			    elreq.rsp_sg_cnt));
+			command_sent = INT_DEF_LB_LOOPBACK_CMD;
+			rval = qla2x00_loopback_test(vha, &elreq, response);
+			if (IS_QLA81XX(ha)) {
+				if (response[0] == MBS_COMMAND_ERROR &&
+				    response[1] == MBS_LB_RESET) {
+					DEBUG2(printk(KERN_ERR
+					    "%s(%ld): ABORTing ISP\n",
+					    __func__, vha->host_no));
+					set_bit(ISP_ABORT_NEEDED,
+					    &vha->dpc_flags);
+					qla2xxx_wake_dpc(vha);
+				 }
+			}
+		} else {
+			type = "FC_BSG_HST_VENDOR_ECHO_DIAG";
+			DEBUG2(qla_printk(KERN_INFO, ha,
+			    "scsi(%ld) bsg rqst type: %s vendor rqst type: "
+			    "%x options: %x.\n", vha->host_no, type,
+			    vendor_cmd, elreq.options));
+			DEBUG2(qla_printk(KERN_INFO, ha,
+			    "scsi(%ld) tx_addr: 0x%llx rx_addr: 0x%llx "
+			    "tx_sg_cnt: %x rx_sg_cnt: %x\n", vha->host_no,
+			    elreq.send_dma, elreq.rcv_dma, elreq.req_sg_cnt,
+			    elreq.rsp_sg_cnt));
+			command_sent = INT_DEF_LB_ECHO_CMD;
+			rval = qla2x00_echo_test(vha, &elreq, response);
 		}
-
-		DEBUG2(qla_printk(KERN_INFO, ha,
-			"scsi(%ld) bsg rqst type: %s vendor rqst type: %x options: %x.\n",
-			vha->host_no, type, vendor_cmd, elreq.options));
-		DEBUG2(qla_printk(KERN_INFO, ha,
-			"scsi(%ld) tx_addr: 0x%llx rx_addr: 0x%llx tx_sg_cnt: %x rx_sg_cnt: %x\n",
-			vha->host_no, elreq.send_dma, elreq.rcv_dma, elreq.req_sg_cnt, elreq.rsp_sg_cnt));
-		rval = qla2x00_loopback_test(vha, &elreq, response);
-		if (IS_QLA81XX(ha)) {
-			if (response[0] == MBS_COMMAND_ERROR && response[1] == MBS_LB_RESET) {
-				DEBUG2(printk(KERN_ERR "%s(%ld): ABORTing "
-					"ISP\n", __func__, vha->host_no));
-				set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-				qla2xxx_wake_dpc(vha);
-			 }
-		}
-	}
-	else {
-		type = "FC_BSG_HST_VENDOR_ECHO_DIAG";
-		DEBUG2(qla_printk(KERN_INFO, ha,
-			"scsi(%ld) bsg rqst type: %s vendor rqst type: %x options: %x.\n",
-			vha->host_no, type, vendor_cmd, elreq.options));
-		DEBUG2(qla_printk(KERN_INFO, ha,
-			"scsi(%ld) tx_addr: 0x%llx rx_addr: 0x%llx tx_sg_cnt: %x rx_sg_cnt: %x\n",
-			vha->host_no, elreq.send_dma, elreq.rcv_dma, elreq.req_sg_cnt, elreq.rsp_sg_cnt));
-		rval = qla2x00_echo_test(vha, &elreq, response);
+		break;
+	default:
+		rval = -ENOSYS;
 	}
 
 	if (rval != QLA_SUCCESS) {
 		DEBUG2(qla_printk(KERN_WARNING, ha,
-			"scsi(%ld) Vendor request %s failed\n", vha->host_no, type));
+		    "scsi(%ld) Vendor request %s failed\n",
+		    vha->host_no, type));
 		rval = 0;
 		bsg_job->reply->result = (DID_ERROR << 16);
-		fw_sts_ptr = ((uint8_t*)bsg_job->req->sense) + sizeof(struct fc_bsg_reply);
-		memcpy( fw_sts_ptr, response, sizeof(response));
+		fw_sts_ptr = ((uint8_t *)bsg_job->req->sense) +
+		    sizeof(struct fc_bsg_reply);
+		memcpy(fw_sts_ptr, response, sizeof(response));
+		fw_sts_ptr += sizeof(response);
+		*fw_sts_ptr = command_sent;
 	} else {
 		DEBUG2(qla_printk(KERN_WARNING, ha,
-			"scsi(%ld) Vendor request %s completed\n", vha->host_no, type));
-		rval = bsg_job->reply->result = bsg_job->reply_len = 0;
-		bsg_job->reply->reply_payload_rcv_len = bsg_job->reply_payload.payload_len;
+		    "scsi(%ld) Vendor request %s completed\n",
+		    vha->host_no, type));
+		rval = bsg_job->reply->result = 0;
+		bsg_job->reply_len = sizeof(struct fc_bsg_reply) +
+		    sizeof(response) + sizeof(uint8_t);
+		bsg_job->reply->reply_payload_rcv_len =
+		    bsg_job->reply_payload.payload_len;
+		fw_sts_ptr = ((uint8_t *)bsg_job->req->sense) +
+		    sizeof(struct fc_bsg_reply);
+		memcpy(fw_sts_ptr, response, sizeof(response));
+		fw_sts_ptr += sizeof(response);
+		*fw_sts_ptr = command_sent;
+		sg_copy_from_buffer(bsg_job->reply_payload.sg_list,
+		bsg_job->reply_payload.sg_cnt, rsp_data,
+		rsp_data_len);
+		qla2x00_dump_buffer((uint8_t *)bsg_job->req->sense,
+		    bsg_job->reply_len);
 	}
 	bsg_job->job_done(bsg_job);
 
 done_unmap_sg:
+
+	if (req_data)
+		dma_free_coherent(&ha->pdev->dev, req_data_len,
+			req_data, req_data_dma);
 	dma_unmap_sg(&ha->pdev->dev,
 	    bsg_job->request_payload.sg_list,
 	    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);

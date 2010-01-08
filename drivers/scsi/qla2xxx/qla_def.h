@@ -2791,4 +2791,15 @@ typedef struct scsi_qla_host {
 
 #define CMD_SP(Cmnd)		((Cmnd)->SCp.ptr)
 
+/*
+ * BSG Vendor specific commands
+ */
+
+#define QL_VND_LOOPBACK		0x01
+
+/* BSG definations for interpreting CommandSent field */
+#define INT_DEF_LB_LOOPBACK_CMD         0
+#define INT_DEF_LB_ECHO_CMD             1
+
+
 #endif
