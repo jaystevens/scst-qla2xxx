@@ -703,23 +703,6 @@ qla2x00_wait_for_loop_ready(scsi_qla_host_t *vha)
 	return (return_status);
 }
 
-static void
-qla2x00_block_error_handler(struct scsi_cmnd *cmnd)
-{
-	struct Scsi_Host *shost = cmnd->device->host;
-	struct fc_rport *rport = starget_to_rport(scsi_target(cmnd->device));
-	unsigned long flags;
-
-	spin_lock_irqsave(shost->host_lock, flags);
-	while (rport->port_state == FC_PORTSTATE_BLOCKED) {
-		spin_unlock_irqrestore(shost->host_lock, flags);
-		msleep(1000);
-		spin_lock_irqsave(shost->host_lock, flags);
-	}
-	spin_unlock_irqrestore(shost->host_lock, flags);
-	return;
-}
-
 /**************************************************************************
 * qla2xxx_eh_abort
 *
@@ -749,7 +732,7 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	struct req_que *req = vha->req;
 	srb_t *spt;
 
-	qla2x00_block_error_handler(cmd);
+	fc_block_scsi_eh(cmd);
 
 	if (!CMD_SP(cmd))
 		return SUCCESS;
@@ -880,7 +863,7 @@ __qla2xxx_eh_generic_reset(char *name, enum nexus_wait_type type,
 	fc_port_t *fcport = (struct fc_port *) cmd->device->hostdata;
 	int err;
 
-	qla2x00_block_error_handler(cmd);
+	fc_block_scsi_eh(cmd);
 
 	if (!fcport)
 		return FAILED;
@@ -960,7 +943,7 @@ qla2xxx_eh_bus_reset(struct scsi_cmnd *cmd)
 	unsigned long serial;
 	srb_t *sp = (srb_t *) CMD_SP(cmd);
 
-	qla2x00_block_error_handler(cmd);
+	fc_block_scsi_eh(cmd);
 
 	id = cmd->device->id;
 	lun = cmd->device->lun;
@@ -1023,7 +1006,7 @@ qla2xxx_eh_host_reset(struct scsi_cmnd *cmd)
 	srb_t *sp = (srb_t *) CMD_SP(cmd);
 	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
 
-	qla2x00_block_error_handler(cmd);
+	fc_block_scsi_eh(cmd);
 
 	id = cmd->device->id;
 	lun = cmd->device->lun;
