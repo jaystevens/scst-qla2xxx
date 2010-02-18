@@ -338,6 +338,16 @@ qla2x00_initialize_adapter(scsi_qla_host_t *vha)
 	rval = qla2x00_init_rings(vha);
 	ha->flags.chip_reset_done = 1;
 
+	if (rval == QLA_SUCCESS && IS_QLA84XX(ha)) {
+	/* Issue verify 84xx FW IOCB to complete 84xx initialization */
+		rval = qla84xx_init_chip(vha);
+		if (rval != QLA_SUCCESS) {
+			qla_printk(KERN_ERR, ha,
+				"Unable to initialize ISP84XX.\n");
+		qla84xx_put_chip(vha);
+		}
+	}
+
 	return (rval);
 }
 

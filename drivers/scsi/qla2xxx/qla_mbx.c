@@ -3636,38 +3636,6 @@ qla2x00_read_ram_word(scsi_qla_host_t *vha, uint32_t risc_addr, uint32_t *data)
 }
 
 int
-qla2x00_write_ram_word(scsi_qla_host_t *vha, uint32_t risc_addr, uint32_t data)
-{
-	int rval;
-	mbx_cmd_t mc;
-	mbx_cmd_t *mcp = &mc;
-
-	if (!IS_FWI2_CAPABLE(vha->hw))
-                return QLA_FUNCTION_FAILED;
-
-	DEBUG11(printk("%s(%ld): entered.\n", __func__, vha->host_no));
-
-	mcp->mb[0] = MBC_WRITE_RAM_WORD_EXTENDED;
-	mcp->mb[1] = LSW(risc_addr);
-	mcp->mb[2] = LSW(data);
-	mcp->mb[3] = MSW(data);
-	mcp->mb[8] = MSW(risc_addr);
-	mcp->out_mb = MBX_8|MBX_3|MBX_2|MBX_1|MBX_0;
-	mcp->in_mb = MBX_0;
-	mcp->tov = 30;
-	mcp->flags = 0;
-	rval = qla2x00_mailbox_command(vha, mcp);
-	if (rval != QLA_SUCCESS) {
-		DEBUG2_3_11(printk("%s(%ld): failed=%x mb[0]=%x.\n", __func__,
-		    vha->host_no, rval, mcp->mb[0]));
-	} else {
-		DEBUG11(printk("%s(%ld): done.\n", __func__, vha->host_no));
-	}
-
-	return rval;
-}
-
-int
 qla2x00_loopback_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mresp)
 {
 	int rval;
@@ -3786,6 +3754,67 @@ qla2x00_echo_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq, uint16_t *mres
 
 	/* Copy mailbox information */
 	memcpy( mresp, mcp->mb, 32);
+	return rval;
+}
+int
+qla84xx_reset_chip(scsi_qla_host_t *ha, uint16_t enable_diagnostic,
+    uint16_t *cmd_status)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+
+	DEBUG16(printk("%s(%ld): enable_diag=%d entered.\n", __func__,
+		ha->host_no, enable_diagnostic));
+
+	mcp->mb[0] = MBC_ISP84XX_RESET;
+	mcp->mb[1] = enable_diagnostic;
+	mcp->out_mb = MBX_1|MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = MBX_DMA_OUT|MBX_DMA_IN|IOCTL_CMD;
+	rval = qla2x00_mailbox_command(ha, mcp);
+
+	/* Return mailbox statuses. */
+	*cmd_status = mcp->mb[0];
+	if (rval != QLA_SUCCESS)
+		DEBUG16(printk("%s(%ld): failed=%x.\n", __func__, ha->host_no,
+			rval));
+	else
+		DEBUG16(printk("%s(%ld): done.\n", __func__, ha->host_no));
+
+	return rval;
+}
+
+int
+qla2x00_write_ram_word(scsi_qla_host_t *vha, uint32_t risc_addr, uint32_t data)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+
+	if (!IS_FWI2_CAPABLE(vha->hw))
+                return QLA_FUNCTION_FAILED;
+
+	DEBUG11(printk("%s(%ld): entered.\n", __func__, vha->host_no));
+
+	mcp->mb[0] = MBC_WRITE_RAM_WORD_EXTENDED;
+	mcp->mb[1] = LSW(risc_addr);
+	mcp->mb[2] = LSW(data);
+	mcp->mb[3] = MSW(data);
+	mcp->mb[8] = MSW(risc_addr);
+	mcp->out_mb = MBX_8|MBX_3|MBX_2|MBX_1|MBX_0;
+	mcp->in_mb = MBX_0;
+	mcp->tov = 30;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+	if (rval != QLA_SUCCESS) {
+		DEBUG2_3_11(printk("%s(%ld): failed=%x mb[0]=%x.\n", __func__,
+		    vha->host_no, rval, mcp->mb[0]));
+	} else {
+		DEBUG11(printk("%s(%ld): done.\n", __func__, vha->host_no));
+	}
+
 	return rval;
 }
 
