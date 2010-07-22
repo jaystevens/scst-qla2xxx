@@ -144,6 +144,7 @@ qla2x00_async_iocb_timeout(srb_t *sp)
 {
 	fc_port_t *fcport = sp->fcport;
 	struct srb_ctx *ctx = sp->ctx;
+	struct srb_iocb *iocb = ctx->u.iocb_cmd;
 	uint16_t data[2];
 
 	DEBUG2(printk(KERN_WARNING
@@ -152,11 +153,11 @@ qla2x00_async_iocb_timeout(srb_t *sp)
 	    fcport->d_id.b.domain, fcport->d_id.b.area, fcport->d_id.b.al_pa));
 
 	fcport->flags &= ~FCF_ASYNC_SENT;
-	if (ctx->type == SRB_LOGIN_CMD)
+	if (ctx->type == SRB_LOGIN_CMD) {
 		qla2x00_post_async_logout_work(fcport->vha, fcport, NULL);
 		/* Retry as needed. */
 		data[0] = MBS_COMMAND_ERROR;
-		data[1] = lio->flags & SRB_LOGIN_RETRIED ?
+		data[1] = iocb->u.logio.flags & SRB_LOGIN_RETRIED ?
 		    QLA_LOGIO_LOGIN_RETRIED: 0;
 		qla2x00_post_async_login_done_work(fcport->vha, fcport, data);
 	}
@@ -327,7 +328,6 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t flags, uint32_t lun,
 	uint32_t tag)
 {
 	struct scsi_qla_host *vha = fcport->vha;
-	struct qla_hw_data *ha = vha->hw;
 	srb_t *sp;
 	struct srb_ctx *ctx;
 	struct srb_iocb *tcf;
@@ -335,7 +335,7 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t flags, uint32_t lun,
 
 	rval = QLA_FUNCTION_FAILED;
 	sp = qla2x00_get_ctx_sp(vha, fcport, sizeof(struct srb_ctx),
-	    ELS_TMO_2_RATOV(ha) + 2);
+	    qla2x00_get_async_timeout(vha) + 2);
 	if (!sp)
 		goto done;
 

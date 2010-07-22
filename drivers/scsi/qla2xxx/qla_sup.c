@@ -795,8 +795,9 @@ done:
 	DEBUG2(qla_printk(KERN_DEBUG, ha, "FLT[%s]: boot=0x%x fw=0x%x "
 	    "vpd_nvram=0x%x vpd=0x%x nvram=0x%x fdt=0x%x flt=0x%x "
 	    "npiv=0x%x. fcp_prio_cfg=0x%x\n", loc, ha->flt_region_boot,
-	    ha->flt_region_vpd_nvram, ha->flt_region_vpd, ha->flt_region_nvram,
-	    ha->flt_region_fdt, ha->flt_region_flt, ha->flt_region_npiv_conf));
+	    ha->flt_region_fw, ha->flt_region_vpd_nvram, ha->flt_region_vpd,
+	    ha->flt_region_nvram, ha->flt_region_fdt, ha->flt_region_flt,
+	    ha->flt_region_npiv_conf, ha->flt_region_fcp_prio));
 }
 
 static void
