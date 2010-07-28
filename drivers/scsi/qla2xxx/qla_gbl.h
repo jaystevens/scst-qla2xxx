@@ -94,6 +94,7 @@ extern int ql2xshiftctondsd;
 extern int ql2xdbwr;
 extern int ql2xdontresethba;
 extern int ql2xasynctmfenable;
+extern int ql2xgffidenable;
 
 extern int qla2x00_loop_reset(scsi_qla_host_t *);
 extern void qla2x00_abort_all_cmds(scsi_qla_host_t *, int);
