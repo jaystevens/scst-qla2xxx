@@ -59,9 +59,9 @@ qla2x00_ctx_sp_timeout(unsigned long __data)
 	ctx = sp->ctx;
 	iocb = ctx->u.iocb_cmd;
 	iocb->timeout(sp);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	iocb->free(sp);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
 static void
@@ -144,22 +144,23 @@ qla2x00_async_iocb_timeout(srb_t *sp)
 {
 	fc_port_t *fcport = sp->fcport;
 	struct srb_ctx *ctx = sp->ctx;
-	struct srb_iocb *iocb = ctx->u.iocb_cmd;
-	uint16_t data[2];
 
 	DEBUG2(printk(KERN_WARNING
-	    "scsi(%ld:%x): Async-%s timeout - portid=%02x%02x%02x.\n",
-	    fcport->vha->host_no, sp->handle, ctx->name,
-	    fcport->d_id.b.domain, fcport->d_id.b.area, fcport->d_id.b.al_pa));
+		"scsi(%ld:%x): Async-%s timeout - portid=%02x%02x%02x.\n",
+		fcport->vha->host_no, sp->handle,
+		ctx->name, fcport->d_id.b.domain,
+		fcport->d_id.b.area, fcport->d_id.b.al_pa));
 
 	fcport->flags &= ~FCF_ASYNC_SENT;
 	if (ctx->type == SRB_LOGIN_CMD) {
+		struct srb_iocb *lio = ctx->u.iocb_cmd;
 		qla2x00_post_async_logout_work(fcport->vha, fcport, NULL);
 		/* Retry as needed. */
-		data[0] = MBS_COMMAND_ERROR;
-		data[1] = iocb->u.logio.flags & SRB_LOGIN_RETRIED ?
-		    QLA_LOGIO_LOGIN_RETRIED: 0;
-		qla2x00_post_async_login_done_work(fcport->vha, fcport, data);
+		lio->u.logio.data[0] = MBS_COMMAND_ERROR;
+		lio->u.logio.data[1] = lio->u.logio.flags & SRB_LOGIN_RETRIED ?
+			QLA_LOGIO_LOGIN_RETRIED : 0;
+		qla2x00_post_async_login_done_work(fcport->vha, fcport,
+			lio->u.logio.data);
 	}
 }
 
@@ -295,7 +296,7 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 	lio->timeout = qla2x00_async_iocb_timeout;
 	lio->done = qla2x00_async_adisc_ctx_done;
 	if (data[1] & QLA_LOGIO_LOGIN_RETRIED)
-	lio->u.logio.flags |= SRB_LOGIN_RETRIED;
+		lio->u.logio.flags |= SRB_LOGIN_RETRIED;
 	rval = qla2x00_start_sp(sp);
 	if (rval != QLA_SUCCESS)
 		goto done_free_sp;
@@ -3106,7 +3107,7 @@ qla2x00_find_all_fabric_devs(scsi_qla_host_t *vha,
 	sw_info_t	*swl;
 	int		swl_idx;
 	int		first_dev, last_dev;
-	port_id_t	wrap, nxt_d_id;
+	port_id_t	wrap = {}, nxt_d_id;
 	struct qla_hw_data *ha = vha->hw;
 	struct scsi_qla_host *vp, *base_vha = pci_get_drvdata(ha->pdev);
 	struct scsi_qla_host *tvp;
@@ -3422,7 +3423,7 @@ qla2x00_device_resync(scsi_qla_host_t *vha)
 	uint32_t rscn_entry;
 	uint8_t rscn_out_iter;
 	uint8_t format;
-	port_id_t d_id;
+	port_id_t d_id = {};
 
 	rval = QLA_RSCNS_HANDLED;
 

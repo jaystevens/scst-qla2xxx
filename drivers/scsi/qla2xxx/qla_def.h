@@ -3003,6 +3003,4 @@ enum nexus_wait_type {
 #include "qla_gbl.h"
 #include "qla_dbg.h"
 #include "qla_inline.h"
-
-#define CMD_SP(Cmnd)		((Cmnd)->SCp.ptr)
 #endif
