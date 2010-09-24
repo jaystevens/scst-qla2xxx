@@ -1844,6 +1844,8 @@ check_scsi_status:
 	case CS_INCOMPLETE:
 	case CS_PORT_UNAVAILABLE:
 	case CS_TIMEOUT:
+	case CS_RESET:
+
 		/*
 		 * We are going to have the fc class block the rport
 		 * while we try to recover so instruct the mid layer
@@ -1866,10 +1868,6 @@ check_scsi_status:
 
 		if (atomic_read(&fcport->state) == FCS_ONLINE)
 			qla2x00_mark_device_lost(fcport->vha, fcport, 1, 1);
-		break;
-
-	case CS_RESET:
-		cp->result = DID_TRANSPORT_DISRUPTED << 16;
 		break;
 
 	case CS_ABORTED:
