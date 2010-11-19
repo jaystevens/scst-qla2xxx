@@ -18,7 +18,16 @@ do
 	git checkout $branch
 	cd drivers/scsi/qla2xxx
 	drv_version="`grep QLA2XXX_VERSION qla_version.h | awk '{print $3}' | sed 's/\"//g'`"
-	git tag "$drv_version"
+
+	# Tag this release
+	if [ "$branch" = "rh6" ]
+	then
+		git tag -m "RHEL 6 driver version $drv_version." -a "$drv_version"
+	elif [ "$branch" = "sp1" ]
+	then
+		git tag -m "SLES 11 SP1 driver version $drv_version." -a "$drv_version"
+	fi
+
 	rm -fr $scratch_dir/qla2xxx-$drv_version $scratch_dir/qla2xxx-src-$drv_version.tar.gz
 	mkdir $scratch_dir/qla2xxx-$drv_version
 	cp -r * $scratch_dir/qla2xxx-$drv_version
