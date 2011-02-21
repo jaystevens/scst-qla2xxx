@@ -835,7 +835,7 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 {
 	scsi_qla_host_t *vha = shost_priv(cmd->device->host);
 	srb_t *sp;
-	int ret = SUCCESS;
+	int ret;
 	unsigned int id, lun;
 	unsigned long flags;
 	int wait = 0;
@@ -845,8 +845,9 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 		return SUCCESS;
 
 	ret = fc_block_scsi_eh(cmd);
-	if (ret != SUCCESS)
+	if (ret != SUCCESS && ret != 0)
 		return ret;
+	ret = SUCCESS;
 
 	id = cmd->device->id;
 	lun = cmd->device->lun;
@@ -960,7 +961,7 @@ __qla2xxx_eh_generic_reset(char *name, enum nexus_wait_type type,
 		return FAILED;
 
 	err = fc_block_scsi_eh(cmd);
-	if (err != SUCCESS)
+	if (err != SUCCESS && err != 0)
 		return err;
 
 	qla_printk(KERN_INFO, vha->hw, "scsi(%ld:%d:%d): %s RESET ISSUED.\n",
@@ -1043,7 +1044,7 @@ qla2xxx_eh_bus_reset(struct scsi_cmnd *cmd)
 		return ret;
 
 	ret = fc_block_scsi_eh(cmd);
-	if (ret != SUCCESS)
+	if (ret != SUCCESS && ret != 0)
 		return ret;
 	ret = FAILED;
 
@@ -1106,7 +1107,7 @@ qla2xxx_eh_host_reset(struct scsi_cmnd *cmd)
 		return ret;
 
 	ret = fc_block_scsi_eh(cmd);
-	if (ret != SUCCESS)
+	if (ret != SUCCESS && ret != 0)
 		return ret;
 	ret = FAILED;
 
