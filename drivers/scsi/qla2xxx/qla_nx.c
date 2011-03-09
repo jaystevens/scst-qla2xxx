@@ -1516,6 +1516,72 @@ qla82xx_get_table_desc(const u8 *unirom, int section)
 	return NULL;
 }
 
+static struct qla82xx_uri_data_desc *
+qla82xx_get_data_desc(struct qla_hw_data *ha,
+	u32 section, u32 idx_offset)
+{
+	const u8 *unirom = ha->hablob->fw->data;
+	int idx = cpu_to_le32(*((int *)&unirom[ha->file_prd_off] + idx_offset));
+	struct qla82xx_uri_table_desc *tab_desc = NULL;
+	__le32 offset;
+
+	tab_desc = qla82xx_get_table_desc(unirom, section);
+	if (!tab_desc)
+		return NULL;
+
+	offset = cpu_to_le32(tab_desc->findex) +
+	    (cpu_to_le32(tab_desc->entry_size) * idx);
+
+	return (struct qla82xx_uri_data_desc *)&unirom[offset];
+}
+
+static u8 *
+qla82xx_get_bootld_offset(struct qla_hw_data *ha)
+{
+	u32 offset = BOOTLD_START;
+	struct qla82xx_uri_data_desc *uri_desc = NULL;
+
+	if (ha->fw_type == QLA82XX_UNIFIED_ROMIMAGE) {
+		uri_desc = qla82xx_get_data_desc(ha,
+		    QLA82XX_URI_DIR_SECT_BOOTLD, QLA82XX_URI_BOOTLD_IDX_OFF);
+		if (uri_desc)
+			offset = cpu_to_le32(uri_desc->findex);
+	}
+
+	return (u8 *)&ha->hablob->fw->data[offset];
+}
+
+static __le32
+qla82xx_get_fw_size(struct qla_hw_data *ha)
+{
+	struct qla82xx_uri_data_desc *uri_desc = NULL;
+
+	if (ha->fw_type == QLA82XX_UNIFIED_ROMIMAGE) {
+		uri_desc =  qla82xx_get_data_desc(ha, QLA82XX_URI_DIR_SECT_FW,
+		    QLA82XX_URI_FIRMWARE_IDX_OFF);
+		if (uri_desc)
+			return cpu_to_le32(uri_desc->size);
+	}
+
+	return cpu_to_le32(*(u32 *)&ha->hablob->fw->data[FW_SIZE_OFFSET]);
+}
+
+static u8 *
+qla82xx_get_fw_offs(struct qla_hw_data *ha)
+{
+	u32 offset = IMAGE_START;
+	struct qla82xx_uri_data_desc *uri_desc = NULL;
+
+	if (ha->fw_type == QLA82XX_UNIFIED_ROMIMAGE) {
+		uri_desc = qla82xx_get_data_desc(ha, QLA82XX_URI_DIR_SECT_FW,
+			QLA82XX_URI_FIRMWARE_IDX_OFF);
+		if (uri_desc)
+			offset = cpu_to_le32(uri_desc->findex);
+	}
+
+	return (u8 *)&ha->hablob->fw->data[offset];
+}
+
 /* PCI related functions */
 char *
 qla82xx_pci_info_str(struct scsi_qla_host *vha, char *str)
@@ -1668,6 +1734,52 @@ void qla82xx_reset_adapter(struct scsi_qla_host *vha)
 	vha->flags.online = 0;
 	qla2x00_try_to_stop_firmware(vha);
 	ha->isp_ops->disable_intrs(ha);
+}
+
+static int
+qla82xx_fw_load_from_blob(struct qla_hw_data *ha)
+{
+	u64 *ptr64;
+	u32 i, flashaddr, size;
+	__le64 data;
+
+	size = (IMAGE_START - BOOTLD_START) / 8;
+
+	ptr64 = (u64 *)qla82xx_get_bootld_offset(ha);
+	flashaddr = BOOTLD_START;
+
+	for (i = 0; i < size; i++) {
+		data = cpu_to_le64(ptr64[i]);
+		if (qla82xx_pci_mem_write_2M(ha, flashaddr, &data, 8))
+			return -EIO;
+		flashaddr += 8;
+	}
+	udelay(100);
+
+	flashaddr = FLASH_ADDR_START;
+	size = (__force u32)qla82xx_get_fw_size(ha) / 8;
+	ptr64 = (u64 *)qla82xx_get_fw_offs(ha);
+
+	for (i = 0; i < size; i++) {
+		data = cpu_to_le64(ptr64[i]);
+
+		if (qla82xx_pci_mem_write_2M(ha, flashaddr, &data, 8))
+			return -EIO;
+		flashaddr += 8;
+	}
+
+	/* Write a magic value to CAMRAM register
+	 * at a specified offset to indicate
+	 * that all data is written and
+	 * ready for firmware to initialize.
+	 */
+	qla82xx_wr_32(ha, QLA82XX_CAM_RAM(0x1fc), QLA82XX_BDINFO_MAGIC);
+ 
+	read_lock(&ha->hw_lock);
+	qla82xx_wr_32(ha, QLA82XX_CRB_PEG_NET_0 + 0x18, 0x1020);
+	qla82xx_wr_32(ha, QLA82XX_ROMUSB_GLB_SW_RESET, 0x80001e);
+	read_unlock(&ha->hw_lock);
+	return 0;
 }
 
 static int
@@ -2252,11 +2364,12 @@ static int
 qla82xx_load_fw(scsi_qla_host_t *vha)
 {
 	int rst;
+	struct fw_blob *blob;
 	struct qla_hw_data *ha = vha->hw;
 
 	if (qla82xx_pinit_from_rom(vha) != QLA_SUCCESS) {
 		qla_printk(KERN_ERR, ha,
-		    "%s: Error during CRB Initialization\n", __func__);
+			"%s: Error during CRB Initialization\n", __func__);
 		return QLA_FUNCTION_FAILED;
 	}
 	udelay(500);
@@ -2266,16 +2379,62 @@ qla82xx_load_fw(scsi_qla_host_t *vha)
 	rst &= ~((1 << 28) | (1 << 24));
 	qla82xx_wr_32(ha, QLA82XX_ROMUSB_GLB_SW_RESET, rst);
 
-	qla_printk(KERN_INFO, ha,
-	    "Attempting to load firmware from flash\n");
+	/*
+	 * FW Load priority:
+	 * 1) Operational firmware residing in flash.
+	 * 2) Firmware via request-firmware interface (.bin file).
+	 */
+	if (ql2xfwloadbin == 2)
+		goto try_blob_fw;
 
-	if (qla82xx_fw_load_from_flash(ha) != QLA_SUCCESS) {
+	qla_printk(KERN_INFO, ha,
+		"Attempting to load firmware from flash\n");
+
+	if (qla82xx_fw_load_from_flash(ha) == QLA_SUCCESS) {
 		qla_printk(KERN_ERR, ha,
-		    "Error loading firmware from flash\n");
-		return QLA_FUNCTION_FAILED;
+			"Firmware loaded successfully from flash\n");
+		return QLA_SUCCESS;
+	}
+try_blob_fw:
+	qla_printk(KERN_INFO, ha,
+	    "Attempting to load firmware from blob\n");
+
+	/* Load firmware blob. */
+	blob = ha->hablob = qla2x00_request_firmware(vha);
+	if (!blob) {
+		qla_printk(KERN_ERR, ha,
+			"Firmware image not present.\n");
+		goto fw_load_failed;
 	}
 
+	/* Validating firmware blob */
+	if (qla82xx_validate_firmware_blob(vha,
+		QLA82XX_FLASH_ROMIMAGE)) {
+		/* Fallback to URI format */
+		if (qla82xx_validate_firmware_blob(vha,
+			QLA82XX_UNIFIED_ROMIMAGE)) {
+			qla_printk(KERN_ERR, ha,
+				"No valid firmware image found!!!");
+			return QLA_FUNCTION_FAILED;
+		}
+	}
+
+	if (qla82xx_fw_load_from_blob(ha) == QLA_SUCCESS) {
+		qla_printk(KERN_ERR, ha,
+			"%s: Firmware loaded successfully "
+			" from binary blob\n", __func__);
+		return QLA_SUCCESS;
+	} else {
+		qla_printk(KERN_ERR, ha,
+		    "Firmware load failed from binary blob\n");
+		blob->fw = NULL;
+		blob = NULL;
+		goto fw_load_failed;
+	}
 	return QLA_SUCCESS;
+
+fw_load_failed:
+	return QLA_FUNCTION_FAILED;
 }
 
 int
