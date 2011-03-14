@@ -733,7 +733,7 @@ qla24xx_set_t10dif_tags(struct scsi_cmnd *cmd, struct fw_dif_context *pkt,
 	 * match LBA in CDB + N
 	 */
 	case SCSI_PROT_DIF_TYPE2:
-		if (!ql2xenablehba_err_chk)
+		if (!qla2x00_hba_err_chk_enabled(op))
 			break;
 
 		if (scsi_prot_sg_count(cmd)) {
@@ -766,7 +766,7 @@ qla24xx_set_t10dif_tags(struct scsi_cmnd *cmd, struct fw_dif_context *pkt,
 	 * 16 bit app tag.
 	 */
 	case SCSI_PROT_DIF_TYPE1:
-		if (!ql2xenablehba_err_chk)
+		if (!qla2x00_hba_err_chk_enabled(op))
 			break;
 
 		if (protcnt && (op == SCSI_PROT_WRITE_STRIP ||
@@ -1297,7 +1297,7 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	    BUG();
 	}
 
-	if (!ql2xenablehba_err_chk)
+	if (!qla2x00_hba_err_chk_enabled(scsi_get_prot_op(cmd)))
 		fw_prot_opts |= 0x10; /* Disable Guard tag checking */
 
 	if (!bundling) {
