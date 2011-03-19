@@ -1334,7 +1334,7 @@ qla2x00_optrom_setup(struct fc_bsg_job *bsg_job, struct qla_hw_data *ha,
 		    start == (ha->flt_region_fw * 4))
 			valid = 1;
 		else if (IS_QLA24XX_TYPE(ha) || IS_QLA25XX(ha) ||
-		    IS_QLA81XX(ha))
+		    IS_QLA8XXX_TYPE(ha))
 			valid = 1;
 		if (!valid) {
 			qla_printk(KERN_WARNING, ha,
