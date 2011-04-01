@@ -28,11 +28,11 @@ do
 		git tag -m "SLES 11 SP1 driver version $drv_version." -a "$drv_version"
 	fi
 
-	rm -fr $scratch_dir/qla2xxx-v$drv_version $scratch_dir/qla2xxx-src-v$drv_version.tar.gz
-	mkdir $scratch_dir/qla2xxx-v$drv_version
-	cp -r * $scratch_dir/qla2xxx-v$drv_version
+	rm -fr $scratch_dir/qla2xxx-$drv_version $scratch_dir/qla2xxx-src-v$drv_version.tar.gz
+	mkdir $scratch_dir/qla2xxx-$drv_version
+	cp -r * $scratch_dir/qla2xxx-$drv_version
 	cd $scratch_dir
-	tar cvf qla2xxx-src-v$drv_version.tar qla2xxx-v$drv_version
+	tar cvf qla2xxx-src-v$drv_version.tar qla2xxx-$drv_version
 	gzip qla2xxx-src-v$drv_version.tar
 	cd $orig_dir
 done
