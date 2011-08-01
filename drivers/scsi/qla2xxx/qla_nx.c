@@ -4796,8 +4796,10 @@ qla82xx_beacon_on(struct scsi_qla_host *vha)
 		qla_printk(KERN_WARNING, ha,
 		    "scsi(%ld): mbx set led config failed in %s\n",
 		    vha->host_no, __func__);
+		goto exit;
 	}
 	ha->beacon_blink_led = 1;
+exit:
 	qla82xx_idc_unlock(ha);
 	return rval;
 }
@@ -4816,8 +4818,10 @@ qla82xx_beacon_off(struct scsi_qla_host *vha)
 		qla_printk(KERN_WARNING, ha,
 		    "scsi(%ld): mbx set led config failed in %s\n",
 		    vha->host_no, __func__);
+		goto exit;
 	}
 	ha->beacon_blink_led = 0;
+exit:
 	qla82xx_idc_unlock(ha);
 	return rval;
 }

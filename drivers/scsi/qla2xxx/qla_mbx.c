@@ -4259,7 +4259,7 @@ qla82xx_mbx_beacon_ctl(scsi_qla_host_t *vha, int enable)
 	else
 		mcp->mb[7] = 0xD;
 
-	mcp->out_mb = MBX_1|MBX_0;
+	mcp->out_mb = MBX_7|MBX_0;
 	mcp->in_mb = MBX_0;
 	mcp->tov = 30;
 	mcp->flags = 0;
