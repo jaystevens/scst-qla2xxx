@@ -43,8 +43,8 @@ qla2100_intr_handler(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-		    "%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x505d,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return (IRQ_NONE);
 	}
 
@@ -140,8 +140,8 @@ qla2300_intr_handler(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-		    "%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x5058,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return (IRQ_NONE);
 	}
 
@@ -2092,8 +2092,8 @@ qla24xx_intr_handler(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-		    "%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x5059,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return IRQ_NONE;
 	}
 
@@ -2175,8 +2175,8 @@ qla24xx_msix_rsp_q(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-		"%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x505a,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return IRQ_NONE;
 	}
 	ha = rsp->hw;
@@ -2205,8 +2205,8 @@ qla25xx_msix_rsp_q(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-			"%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x505b,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return IRQ_NONE;
 	}
 	ha = rsp->hw;
@@ -2239,8 +2239,8 @@ qla24xx_msix_default(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-			"%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0x505c,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return IRQ_NONE;
 	}
 	ha = rsp->hw;
