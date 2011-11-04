@@ -18,7 +18,7 @@
  * |                              |                    | 0x302e         |
  * | DPC Thread                   |       0x401c       |		|
  * | Async Events                 |       0x5057       | 0x5052		|
- * | Timer Routines               |       0x6010       |		|
+ * | Timer Routines               |       0x6012       |		|
  * | User Space Interactions      |       0x709e       |		|
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |                              |                    | 0x800b         |
