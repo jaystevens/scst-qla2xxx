@@ -3344,7 +3344,7 @@ void qla82xx_clear_pending_mbx(scsi_qla_host_t *vha)
 void
 qla82xx_watchdog(scsi_qla_host_t *vha)
 {
-	uint32_t dev_state, halt_status, pause_ctl;
+	uint32_t dev_state, halt_status;
 	struct qla_hw_data *ha = vha->hw;
 
 	/* don't poll if reset is going on */
@@ -3364,23 +3364,13 @@ qla82xx_watchdog(scsi_qla_host_t *vha)
 			qla2xxx_wake_dpc(vha);
 		} else {
 			if (qla82xx_check_fw_alive(vha)) {
+				ql_dbg(ql_dbg_timer, vha, 0x6011,
+				    "disabling pause transmit on port 0 & 1.\n");
+				qla82xx_wr_32(ha, QLA82XX_CRB_NIU + 0x98,
+				    CRB_NIU_XG_PAUSE_CTL_P0|CRB_NIU_XG_PAUSE_CTL_P1);
 				halt_status = qla82xx_rd_32(ha,
 				    QLA82XX_PEG_HALT_STATUS1);
-				pause_ctl = qla82xx_rd_32(ha,
-				    QLA82XX_CRB_NIU + 0x98);
-				if ((ha->portnum & 1) &&
-				    !(pause_ctl & CRB_NIU_XG_PAUSE_CTL_P1)) {
-					ql_dbg(ql_dbg_timer, vha, 0x6011,
-					    "disabling pause transmit on port 1.\n");
-					qla82xx_wr_32(ha, QLA82XX_CRB_NIU + 0x98,
-					    CRB_NIU_XG_PAUSE_CTL_P1);
-				} else if (!(pause_ctl & CRB_NIU_XG_PAUSE_CTL_P0)) {
-					ql_dbg(ql_dbg_timer, vha, 0x6012,
-					    "disabling pause transmit on port 0.\n");
-					qla82xx_wr_32(ha, QLA82XX_CRB_NIU + 0x98,
-					    CRB_NIU_XG_PAUSE_CTL_P0);
-				}
-				ql_dbg(ql_dbg_timer, vha, 0x6005,
+				ql_log(ql_log_info, vha, 0x6005,
 				    "dumping hw/fw registers:.\n "
 				    " PEG_HALT_STATUS1: 0x%x, PEG_HALT_STATUS2: 0x%x,.\n "
 				    " PEG_NET_0_PC: 0x%x, PEG_NET_1_PC: 0x%x,.\n "
