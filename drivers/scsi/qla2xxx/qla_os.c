@@ -629,6 +629,8 @@ qla2xxx_queuecommand(struct scsi_cmnd *cmd, void (*done)(struct scsi_cmnd *))
 		goto qc24_host_busy_lock;
 	}
 
+	cmd->scsi_done = done;
+
 	rval = ha->isp_ops->start_scsi(sp);
 	if (rval != QLA_SUCCESS) {
 		ql_dbg(ql_dbg_io, vha, 0x3013,
