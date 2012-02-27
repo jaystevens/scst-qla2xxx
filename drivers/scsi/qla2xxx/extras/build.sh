@@ -1,21 +1,19 @@
 #!/bin/sh
 
-# QLogic ISP2xxx device driver build script
+# QLogic ISP2xxx/ISP4xxx device driver build script
 # Copyright (C) 2003-2011 QLogic Corporation
 # (www.qlogic.com)
-# 
+#
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
 # Free Software Foundation; either version 2, or (at your option) any
 # later version.
-# 
+#
 # This program is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # General Public License for more details.
 #
-
-Q_NODE=QLA2XXX
 
 UNAME=`uname -a`
 K_VERSION=`uname -r`
@@ -26,13 +24,31 @@ K_THREADS=5
 
 SLES=/etc/SuSE-release
 RHEL=/etc/redhat-release
+UDEV_RULE_DIR=/etc/udev/rules.d/
+UDEV_RULE_FILE=99-qla2xxx.rules
+UDEV_SCRIPT_DIR=/lib/udev
+UDEV_SCRIPT=qla2xxx_udev.sh
+UDEV_EARLY_RULE=/etc/udev/rules.d/05-udev-early.rules
+UDEV_TMP_RULE=/tmp/tmp.rules
 
-K_INSTALL_DIR=${K_LIBS}/extra/qlgc-qla2xxx/
-if test -f "${SLES}" ; then
-	K_INSTALL_DIR=${K_LIBS}/updates/
+# Determine udev control utility to reload rules
+which udevadm 1>/dev/null 2>&1
+if [ $? -eq 0 ]
+then
+	RELOAD_RULES='udevadm control --reload-rules'
+else
+	RELOAD_RULES='udevcontrol reload_rules'
 fi
 
 BOOTDIR="/boot"
+
+Q_NODE=QLA2XXX
+MODULE=qla2xxx
+K_INSTALL_DIR=${K_LIBS}/extra/qlgc-qla2xxx/
+
+if test -f "${SLES}" ; then
+	K_INSTALL_DIR=${K_LIBS}/updates/
+fi
 
 if [ "`uname -m`" = "ia64" ]; then
         if [ -f "$RHEL" ]; then
@@ -44,6 +60,28 @@ fi
 # drv_build -- Generic 'make' command for driver
 #	$1 -- directive
 #
+
+set_variables() {
+	if [ -f ./qla_os.c ]; then
+		Q_NODE=QLA2XXX
+		MODULE=qla2xxx
+		K_INSTALL_DIR=${K_LIBS}/extra/qlgc-qla2xxx/
+
+		if test -f "${SLES}" ; then
+			K_INSTALL_DIR=${K_LIBS}/updates/
+		fi
+
+	elif [ -f ./ql4_os.c ]; then
+		Q_NODE=QLA4XXX
+		MODULE=qla4xxx
+		K_INSTALL_DIR=${K_LIBS}/extra/qlgc-qla4xxx/
+
+		if test -f "${SLES}" ; then
+			K_INSTALL_DIR=${K_LIBS}/updates/
+		fi
+	fi
+}
+
 drv_build() {
 	test -z "$1" && return 1
 
@@ -57,6 +95,47 @@ drv_build() {
 	fi
 }
 
+udev_install()
+{
+	RET=0
+	diff ./extras/${UDEV_RULE_FILE} ${UDEV_RULE_DIR}/${UDEV_RULE_FILE} &> /dev/null
+	RET=$?
+	diff ./extras/${UDEV_SCRIPT} ${UDEV_SCRIPT_DIR}/${UDEV_SCRIPT} &> /dev/null
+	(( RET += $? ))
+
+	if [ $RET -ne 0 ]; then
+		echo "${Q_NODE} -- Installing udev rule to capture FW dump..."
+		cp ./extras/${UDEV_RULE_FILE} ${UDEV_RULE_DIR}/${UDEV_RULE_FILE}
+		cp ./extras/${UDEV_SCRIPT} ${UDEV_SCRIPT_DIR}/${UDEV_SCRIPT}
+
+		# comment out the modules ignore_device rule
+		if [ -e ${UDEV_EARLY_RULE} ]; then
+			cp ${UDEV_EARLY_RULE} ${UDEV_EARLY_RULE}.bak
+			cat ${UDEV_EARLY_RULE} | sed "s/\(^SUBSYSTEM==\"module\".*OPTIONS=\"ignore_device\".*\)/#\1/" > ${UDEV_TMP_RULE}
+			if [ -s ${UDEV_TMP_RULE} ]; then
+				mv -f ${UDEV_TMP_RULE} ${UDEV_EARLY_RULE}
+			fi
+		fi
+		$RELOAD_RULES
+	else
+		echo "${Q_NODE} -- udev rules already installed"
+	fi
+}
+
+udev_remove()
+{
+		rm -f ${UDEV_RULE_DIR}/${UDEV_RULE_FILE} &> /dev/null
+		rm -f ${UDEV_SCRIPT_DIR}/${UDEV_SCRIPT} &> /dev/null
+		if [ -e ${UDEV_EARLY_RULE} ]; then
+			cat ${UDEV_EARLY_RULE} |sed "s/\#\(SUBSYSTEM==\"module\".*OPTIONS=\"ignore_device\".*\)/\1/" > ${UDEV_TMP_RULE}
+			if [ -s ${UDEV_TMP_RULE} ]; then
+				echo "${Q_NODE} -- Removing FW capture udev rule..."
+				mv -f ${UDEV_TMP_RULE} ${UDEV_EARLY_RULE}
+				$RELOAD_RULES
+			fi
+		fi
+}
+
 ###
 # drv_install -- Generic steps for installation
 #
@@ -68,7 +147,7 @@ drv_install() {
 
 
 	#backup all modules except the one in default path
-	for module in `find /lib/modules/$K_VERSION -name qla2xxx.ko`
+	for module in `find /lib/modules/$K_VERSION -name $MODULE.ko`
 	do
 		echo $module | grep "scsi" >& /dev/null
 		if [ $? -ne 0 ]; then
@@ -76,30 +155,87 @@ drv_install() {
 		fi
 	done
 
-	echo "${Q_NODE} -- Installing the qla2xxx modules to ${K_INSTALL_DIR}..."
+	echo "${Q_NODE} -- Installing the $MODULE modules to ${K_INSTALL_DIR}..."
 	install -d -o root -g root ${K_INSTALL_DIR}
 	install -o root -g root -m 0644 *.ko ${K_INSTALL_DIR}
 
 	# depmod
 	/sbin/depmod -a
+
+	#install the udev rules to capture FW dump
+	if [ -f ./qla2xxx.ko ]; then
+		udev_install
+	fi
 }
 
 ###
 #
 #
 case "$1" in
-    install)
-	# QLA2XXX Specific
-	echo "${Q_NODE} -- Building the qla2xxx driver..."
+    -h | help)
+	echo "QLogic Corporation -- driver build script"
+	echo "  build.sh <directive>"
+	echo ""
+	echo "   # cd <driver source>"
+	echo "   # ./extras/build.sh"
+	echo ""
+	echo "    Build the driver sources based on the standard"
+	echo "    SLES10/SLES11/RHEL5/RHEL6 build environment."
+	echo ""
+	echo "   # ./extras/build.sh clean"
+	echo ""
+	echo "    Clean driver source directory of all build files (i.e. "
+	echo "    *.ko, *.o, etc)."
+	echo ""
+	echo "   # ./extras/build.sh new"
+	echo ""
+	echo "    Rebuild the driver sources from scratch."
+	echo "    This is essentially a shortcut for:"
+	echo ""
+	echo "        # ./build.sh clean"
+	echo "        # ./build.sh"
+	echo ""
+	echo "   # ./extras/build.sh install"
+	echo ""
+	echo "     Build and install the driver module files."
+	echo "     This command performs the following:"
+	echo ""
+	echo "        1. Builds the driver .ko files."
+	echo "        2. Copies the .ko files to the appropriate "
+	echo "           /lib/modules/... directory."
+	echo ""
+	echo "   # ./extras/build.sh remove"
+	echo ""
+	echo "     Remove/uninstall the driver module files."
+	echo "     This command performs the following:"
+	echo ""
+	echo "        1. Uninstalls the driver .ko files from appropriate."
+	echo "           /lib/modules/... directory."
+	echo "        2. Rebuilds the initrd image with the /sbin/mk_initrd"
+	echo "           command."
+	echo ""
+	echo "   # ./extras/build.sh initrd"
+	echo ""
+	echo "     Build, install, and update the initrd image."
+	echo "     This command performs the following:"
+	echo ""
+	echo "        1. All steps in the 'install' directive."
+	echo "        2. Rebuilds the initrd image with the /sbin/mk_initrd"
+	echo "           command."
+	echo ""
+	;;
+    -i | install)
+	set_variables
+	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build modules
 
 	drv_install
 	;;
-    remove)
-	# QLA2XXX Specific
-	echo "${Q_NODE} -- Removing the qla2xxx driver..."
-	if  [ -f ${K_INSTALL_DIR}/qla2xxx.ko ]; then
-		rm ${K_INSTALL_DIR}/qla2xxx.ko
+    -r | remove)
+	set_variables
+	echo "${Q_NODE} -- Building the $MODULE driver..."
+	if  [ -f ${K_INSTALL_DIR}/$MODULE.ko ]; then
+		rm ${K_INSTALL_DIR}/$MODULE.ko
 		/sbin/depmod -a
 		echo "${Q_NODE} -- Rebuilding INITRD image..."
 		if test -f "${SLES}" ; then
@@ -111,7 +247,7 @@ case "$1" in
 				echo "${Q_NODE} -- Unable to find mkinitrd command..."
 				echo "${Q_NODE} -- Skipping rebuilding of INITRD image..."
 			fi
-					
+
 		else
 			if [ -f ${BOOTDIR}/initrd-${K_VERSION}.img ]; then
 				/sbin/mkinitrd -f ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
@@ -119,12 +255,15 @@ case "$1" in
 				/sbin/mkinitrd ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
 			fi
 		fi
-	fi 
+		if [ "$Q_NODE" == "QLA2XXX" ]; then
+			udev_remove
+		fi
+	fi
 	;;
 
     initrd)
-	# QLA2XXX Specific
-	echo "${Q_NODE} -- Building the qla2xxx driver..."
+	set_variables
+	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build modules
 
 	drv_install
@@ -142,7 +281,7 @@ case "$1" in
 			echo "${Q_NODE} -- Unable to find mkinitrd command..."
 			echo "${Q_NODE} -- Skipping rebuilding of INITRD image..."
 		fi
-				
+
 	else
 		if [ -f ${BOOTDIR}/initrd-${K_VERSION}.img ]; then
 			if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak.img ]; then
@@ -160,12 +299,14 @@ case "$1" in
 	drv_build clean
 	;;
     new)
-	echo "${Q_NODE} -- Clean rebuild of the qla2xxx driver..."
+	set_variables
+	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build clean
 	drv_build modules
 	;;
     *)
-	echo "${Q_NODE} -- Building the qla2xxx driver..."
+	set_variables
+	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build modules
 	;;
 esac
