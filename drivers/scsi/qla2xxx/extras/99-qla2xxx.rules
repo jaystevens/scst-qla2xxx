@@ -3,4 +3,4 @@
 #
 
 # qla2xxx driver
-SUBSYSTEM=="pci", ENV{DRIVER}="qla2xxx", ACTION=="change", RUN+="qla2xxx_udev.sh"
+SUBSYSTEM=="pci", ENV{DRIVER}=="qla2xxx", ACTION=="change", RUN+="qla2xxx_udev.sh"
