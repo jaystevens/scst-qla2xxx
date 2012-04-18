@@ -168,6 +168,30 @@ drv_install() {
 	fi
 }
 
+build_ramdisk () {
+	echo "${Q_NODE} -- Rebuilding INITRD image..."
+	if test -f "${SLES}" ; then
+		if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak ]; then
+			cp ${BOOTDIR}/initrd-${K_VERSION} ${BOOTDIR}/initrd-${K_VERSION}.bak
+		fi
+		mkinitrd -k /boot/vmlinuz-${K_VERSION} -i /boot/initrd-${K_VERSION} >& /dev/null
+	elif test -f "${RHEL}"; then
+		# Check if it is RHEL6
+		REDHAT_REL=`cat ${RHEL} | cut -d " " -f 7 | cut -d . -f 1`
+		if [ "$REDHAT_REL" -le 5 ]; then
+			if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak.img ]; then
+				cp ${BOOTDIR}/initrd-${K_VERSION}.img ${BOOTDIR}/initrd-${K_VERSION}.bak.img
+			fi
+			mkinitrd -f /boot/initrd-${KERNEL_VERSION}.img $KERNEL_VERSION >& /dev/null
+		else
+			if [ ! -f ${BOOTDIR}/initramfs-${K_VERSION}.bak.img ]; then
+				cp ${BOOTDIR}/initramfs-${K_VERSION}.img ${BOOTDIR}/initramfs-${K_VERSION}.bak.img
+			fi
+			dracut --force /boot/initramfs-${K_VERSION}.img $K_VERSION >& /dev/null
+		fi
+	fi
+}
+
 ###
 #
 #
@@ -237,24 +261,7 @@ case "$1" in
 	if  [ -f ${K_INSTALL_DIR}/$MODULE.ko ]; then
 		rm ${K_INSTALL_DIR}/$MODULE.ko
 		/sbin/depmod -a
-		echo "${Q_NODE} -- Rebuilding INITRD image..."
-		if test -f "${SLES}" ; then
-			if [ -f /sbin/mk_initrd ]; then
-				/sbin/mk_initrd
-			elif [ -f /sbin/mkinitrd ]; then
-				/sbin/mkinitrd
-			else
-				echo "${Q_NODE} -- Unable to find mkinitrd command..."
-				echo "${Q_NODE} -- Skipping rebuilding of INITRD image..."
-			fi
-
-		else
-			if [ -f ${BOOTDIR}/initrd-${K_VERSION}.img ]; then
-				/sbin/mkinitrd -f ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
-			else
-				/sbin/mkinitrd ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
-			fi
-		fi
+		build_ramdisk
 		if [ "$Q_NODE" == "QLA2XXX" ]; then
 			udev_remove
 		fi
@@ -265,34 +272,8 @@ case "$1" in
 	set_variables
 	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build modules
-
 	drv_install
-
-	echo "${Q_NODE} -- Rebuilding INITRD image..."
-	if test -f "${SLES}" ; then
-		if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak ]; then
-			cp ${BOOTDIR}/initrd-${K_VERSION} ${BOOTDIR}/initrd-${K_VERSION}.bak
-		fi
-		if [ -f /sbin/mk_initrd ]; then
-			/sbin/mk_initrd
-		elif [ -f /sbin/mkinitrd ]; then
-			/sbin/mkinitrd
-		else
-			echo "${Q_NODE} -- Unable to find mkinitrd command..."
-			echo "${Q_NODE} -- Skipping rebuilding of INITRD image..."
-		fi
-
-	else
-		if [ -f ${BOOTDIR}/initrd-${K_VERSION}.img ]; then
-			if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak.img ]; then
-				cp ${BOOTDIR}/initrd-${K_VERSION}.img ${BOOTDIR}/initrd-${K_VERSION}.bak.img
-			fi
-			/sbin/mkinitrd -f ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
-		else
-			/sbin/mkinitrd ${BOOTDIR}/initrd-${K_VERSION}.img ${K_VERSION}
-		fi
-	fi
-
+	build_ramdisk
 	;;
     clean)
 	echo "${Q_NODE} -- Cleaning driver build directory..."
