@@ -6,7 +6,7 @@
 # branches
 
 scratch_dir="/tmp"
-branches="rh6 sp1"
+branches="rhel6 sles11"
 
 # Assume we're at the root of the qla2xxx-v2632-devel tree
 orig_dir=$PWD
@@ -20,12 +20,12 @@ do
 	drv_version="`grep QLA2XXX_VERSION qla_version.h | awk '{print $3}' | sed 's/\"//g'`"
 
 	# Tag this release
-	if [ "$branch" = "rh6" ]
+	if [ "$branch" = "rhel6" ]
 	then
 		git tag -m "RHEL 6 driver version $drv_version." -a "$drv_version"
-	elif [ "$branch" = "sp1" ]
+	elif [ "$branch" = "sles11" ]
 	then
-		git tag -m "SLES 11 SP1 driver version $drv_version." -a "$drv_version"
+		git tag -m "SLES 11 driver version $drv_version." -a "$drv_version"
 	fi
 
 	rm -fr $scratch_dir/qla2xxx-$drv_version $scratch_dir/qla2xxx-src-v$drv_version.tar.gz
