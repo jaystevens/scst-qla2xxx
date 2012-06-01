@@ -19,6 +19,7 @@ sysfs=/sys
 qstats=${sysfs}/class/scsi_host/host${1}/device/stats
 qfwd=${sysfs}/class/scsi_host/host${1}/device/fw_dump
 dfile=fw_dump_${1}_`eval date +%Y%m%d_%H%M%S`.txt
+mctpfile=mctp_dump_${1}_`eval date +%Y%m%d_%H%M%S`.txt
 
 # Get host number
 if [ -z "${1}" ] ; then
@@ -52,10 +53,22 @@ echo 0 > ${qfwd}
 if ! test -s "${dfile}" ; then
 	echo "No firmware dump available at host ${1}!!!"
 	rm ${dfile}
-	exit 1
+else
+	gzip ${dfile}
+	echo "Firmware dumped to file ${dfile}.gz."
 fi
 
-gzip ${dfile}
-echo "Firmware dumped to file ${dfile}.gz."
+
+# Go with mctp dump
+echo 7 > ${qfwd}
+cat ${qfwd} > ${mctpfile}
+echo 6 > ${qfwd}
+if ! test -s "${mctpfile}" ; then
+	echo "No mctp dump available at host ${1}!!!"
+	rm ${mctpfile}
+else
+	gzip ${mctpfile}
+	echo "Mctp dumped to file ${mctpfile}.gz."
+fi
 
 exit 0
