@@ -8,6 +8,8 @@ err() {
     echo "$@" >&2
     if [ -x /bin/logger ]; then
 	/bin/logger -t "${0##*/}[$$]" "$@"
+    elif [ -x /usr/bin/logger ]; then
+	/usr//bin/logger -t "${0##*/}[$$]" "$@"
     fi
 }
 
