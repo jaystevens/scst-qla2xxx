@@ -17,7 +17,7 @@ SYSFS=/sys
 HOST=${FW_DUMP}
 QFWD=${SYSFS}/class/fc_host/host${HOST}/device/fw_dump
 DFILE_PATH=/opt/QLogic_Corporation/FW_Dumps
-DFILE=${DFILE_PATH}/fw_dump_${HOST}_`eval date +%Y%m%d_%H%M%S`.txt
+DFILE=${DFILE_PATH}/qla2xxx_fw_dump_${HOST}_`eval date +%Y%m%d_%H%M%S`.txt
 
 # Verify fw_dump binary-attribute file
 if ! test -f ${QFWD} ; then

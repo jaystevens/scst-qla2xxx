@@ -18,7 +18,7 @@ version=1.039720
 sysfs=/sys
 qstats=${sysfs}/class/scsi_host/host${1}/device/stats
 qfwd=${sysfs}/class/scsi_host/host${1}/device/fw_dump
-dfile=fw_dump_${1}_`eval date +%Y%m%d_%H%M%S`.txt
+dfile=qla2xxx_fw_dump_${1}_`eval date +%Y%m%d_%H%M%S`.txt
 mctpfile=mctp_dump_${1}_`eval date +%Y%m%d_%H%M%S`.txt
 
 # Get host number
