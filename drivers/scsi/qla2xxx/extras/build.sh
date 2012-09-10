@@ -247,6 +247,13 @@ case "$1" in
 	echo "        2. Rebuilds the initrd image with the /sbin/mk_initrd"
 	echo "           command."
 	echo ""
+	echo "   # ./extras/build.sh analyze [--what|--clean|--local]"
+	echo ""
+	echo "     Perform Coverity source code analysis."
+	echo "        --what   show [branch]->stream mapping"
+	echo "        --clean  remove previous/incremental data"
+	echo "        --local  perform analysis only (do not commit)"
+	echo ""
 	;;
     -i | install)
 	set_variables
@@ -284,6 +291,9 @@ case "$1" in
 	echo "${Q_NODE} -- Building the $MODULE driver..."
 	drv_build clean
 	drv_build modules
+	;;
+    analyze)
+	cov_analyze.sh $2
 	;;
     *)
 	set_variables
