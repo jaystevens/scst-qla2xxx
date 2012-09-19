@@ -182,7 +182,7 @@ build_ramdisk () {
 			if [ ! -f ${BOOTDIR}/initrd-${K_VERSION}.bak.img ]; then
 				cp ${BOOTDIR}/initrd-${K_VERSION}.img ${BOOTDIR}/initrd-${K_VERSION}.bak.img
 			fi
-			mkinitrd -f /boot/initrd-${KERNEL_VERSION}.img $KERNEL_VERSION >& /dev/null
+			mkinitrd -f /boot/initrd-${K_VERSION}.img ${K_VERSION} >& /dev/null
 		else
 			if [ ! -f ${BOOTDIR}/initramfs-${K_VERSION}.bak.img ]; then
 				cp ${BOOTDIR}/initramfs-${K_VERSION}.img ${BOOTDIR}/initramfs-${K_VERSION}.bak.img
