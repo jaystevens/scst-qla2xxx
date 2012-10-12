@@ -709,7 +709,7 @@ qla2xxx_queuecommand(struct scsi_cmnd *cmd, void (*done)(struct scsi_cmnd *))
 	}
 
 	sp = qla2x00_get_sp(base_vha, fcport, GFP_ATOMIC);
-	if (!sp)
+	if (!sp) {
 		set_bit(HOST_RAMP_DOWN_QUEUE_DEPTH, &vha->dpc_flags);
 		goto qc24_host_busy_lock;
 	}
