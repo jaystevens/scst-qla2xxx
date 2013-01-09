@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # QLogic ISP2xxx/ISP4xxx device driver build script
-# Copyright (C) 2003-2011 QLogic Corporation
+# Copyright (C) 2003-2013 QLogic Corporation
 # (www.qlogic.com)
 #
 # This program is free software; you can redistribute it and/or modify it
