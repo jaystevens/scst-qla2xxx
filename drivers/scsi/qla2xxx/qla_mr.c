@@ -1051,6 +1051,8 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 			aenmbx0 = RD_REG_DWORD(&reg->aenmailbox0);
 			ha->mr.fw_reset_timer_tick = QLAFX00_RESET_INTERVAL;
 			if (aenmbx0 == MBA_FW_RESTART_CMPLT) {
+				ql_dbg(ql_dbg_timer, vha, 0xffff,
+				    "ISPFx00(%s): Target Scan initiated\n", __func__);
 				/* Wake up DPC to rescan the targets */
 				set_bit(FX00_TARGET_SCAN, &vha->dpc_flags);
 				clear_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
@@ -1059,7 +1061,7 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 				uint32_t data0, data1;
 
 				ql_dbg(ql_dbg_timer, vha, 0x6013,
-				    "Reinit QLAFX00_PEX0_WIN0_BASE_ADDR_REG\n");
+				    "(%s): Reinit QLAFX00_PEX0_WIN0_BASE_ADDR_REG\n", __func__);
 				data0 = QLAFX00_RD_REG(ha,
 				    QLAFX00_BAR1_BASE_ADDR_REG);
 				data1 = QLAFX00_RD_REG(ha,
@@ -1071,14 +1073,22 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 				QLAFX00_WR_REG(ha,
 				    QLAFX00_PEX0_WIN0_BASE_ADDR_REG,
 				    (data0 | data1));
+				ql_dbg(ql_dbg_timer, vha, 0xffff,
+				    "ISPFx00(%s): Updating QLAFX00_PEX0_WIN0_BASE_ADDR_REG, aenmbx0: 0x%x\n", __func__, aenmbx0);
 			} else if (ha->mr.fw_reset_timer_exp) {
 				set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 				qla2xxx_wake_dpc(vha);
 				ha->mr.fw_reset_timer_exp = 0;
+				ql_dbg(ql_dbg_timer, vha, 0xffff,
+				    "ISPFx00(%s): Reset timer expired, aenmbx: 0x%x\n",
+				    __func__, aenmbx0);
 			} else if ((aenmbx0 & 0xFF00) == MBA_FW_POLL_STATE) {
 				ha->mr.fw_reset_timer_tick =
 				    QLAFX00_MAX_RESET_INTERVAL;
 				ha->mr.fw_reset_timer_exp = 1;
+				ql_dbg(ql_dbg_timer, vha, 0xffff,
+				    "ISPFx00(%s): Reset timer extended to 10min, aenmbx0: 0x%x\n",
+				    __func__, aenmbx0);
 			}
 		}
 	}
@@ -1114,6 +1124,10 @@ qlafx00_reset_initialize(scsi_qla_host_t *vha)
 
 	ql_log(ql_log_info, vha, 0x0143,
 	    "(%s): succeeded.\n", __func__);
+
+	ql_log(ql_log_info, vha, 0xffff,
+	    "(%s): Waiting for 8060.\n", __func__);
+
 	ha->flags.mr_reset_hdlr_active = 0;
 	return QLA_SUCCESS;
 }
@@ -1147,6 +1161,8 @@ qlafx00_abort_isp(scsi_qla_host_t *vha)
 	ql_log(ql_log_info, vha, 0x0145,
 	    "(%s): succeeded.\n", __func__);
 
+	ql_log(ql_log_info, vha, 0xffff,
+	    "(%s): Waiting for 8060.\n", __func__);
 	return QLA_SUCCESS;
 }
 
