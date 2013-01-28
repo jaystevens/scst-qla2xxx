@@ -992,6 +992,7 @@ typedef struct {
 #define	MBX_0		BIT_0
 
 #define RNID_TYPE_SET_VERSION	0x9
+#define RNID_TYPE_ASIC_TEMP	0xC
 
 /*
  * Firmware state codes from get firmware state mailbox command
@@ -2758,7 +2759,6 @@ struct qla_hw_data {
 		uint32_t	nic_core_hung:1;
 
 		uint32_t	quiesce_owner:1;
-		uint32_t	thermal_supported:1;
 		uint32_t	nic_core_reset_hdlr_active:1;
 		uint32_t	nic_core_reset_owner:1;
 		uint32_t	isp82xx_no_md_cap:1;
@@ -3228,6 +3228,11 @@ struct qla_hw_data {
 	int             cfg_lun_q_depth;
 
 	struct mr_data_fx00 mr;
+
+	uint16_t	thermal_support;
+#define THERMAL_SUPPORT_I2C    BIT_0
+#define THERMAL_SUPPORT_ISP    BIT_1
+
 };
 
 /*
