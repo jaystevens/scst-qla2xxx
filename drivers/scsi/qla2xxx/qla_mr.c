@@ -897,6 +897,7 @@ qlafx00_abort_isp_cleanup(scsi_qla_host_t *vha)
 
 	vha->flags.online = 0;
 	ha->flags.chip_reset_done = 0;
+	ha->mr.fw_hbt_en = 0;
 	clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 	vha->qla_stats.total_isp_aborts++;
 
@@ -1022,7 +1023,7 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 		if ((!ha->flags.mr_reset_hdlr_active) &&
 		    (!test_bit(UNLOADING, &vha->dpc_flags)) &&
 		    (!test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags)) &&
-		    (!test_bit(FX00_RESET_RECOVERY, &vha->dpc_flags))) {
+		    (ha->mr.fw_hbt_en)) {
 			fw_heart_beat = RD_REG_DWORD(&reg->fwheartbeat);
 			if (fw_heart_beat != ha->mr.old_fw_hbt_cnt) {
 				ha->mr.old_fw_hbt_cnt = fw_heart_beat;
@@ -1036,8 +1037,6 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 					qla2xxx_wake_dpc(vha);
 					ha->mr.fw_hbt_miss_cnt = 0;
 				}
-				ql_dbg(ql_dbg_timer, vha, 0x6012,
-				    "ISPFx00: Firmware heart beat counter failure\n");
 			}
 		}
 		ha->mr.fw_hbt_cnt = QLAFX00_HEARTBEAT_INTERVAL;
@@ -1045,52 +1044,44 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 
 	if (test_bit(FX00_RESET_RECOVERY, &vha->dpc_flags)) {
 		/* Reset recovery to be performed in timer routine */
-		if (ha->mr.fw_reset_timer_tick)
-			ha->mr.fw_reset_timer_tick--;
-		else {
-			aenmbx0 = RD_REG_DWORD(&reg->aenmailbox0);
+		aenmbx0 = RD_REG_DWORD(&reg->aenmailbox0);
+		if (ha->mr.fw_reset_timer_exp) {
+			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+			qla2xxx_wake_dpc(vha);
+			ha->mr.fw_reset_timer_exp = 0;
+		} else if (aenmbx0 == MBA_FW_RESTART_CMPLT) {
+			/* Wake up DPC to rescan the targets */
+			set_bit(FX00_TARGET_SCAN, &vha->dpc_flags);
+			clear_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
+			qla2xxx_wake_dpc(vha);
 			ha->mr.fw_reset_timer_tick = QLAFX00_RESET_INTERVAL;
-			if (aenmbx0 == MBA_FW_RESTART_CMPLT) {
-				ql_dbg(ql_dbg_timer, vha, 0xffff,
-				    "ISPFx00(%s): Target Scan initiated\n", __func__);
-				/* Wake up DPC to rescan the targets */
-				set_bit(FX00_TARGET_SCAN, &vha->dpc_flags);
-				clear_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
-				qla2xxx_wake_dpc(vha);
-			} else if (aenmbx0 == 0xFFFFFFFF) {
-				uint32_t data0, data1;
-
-				ql_dbg(ql_dbg_timer, vha, 0x6013,
-				    "(%s): Reinit QLAFX00_PEX0_WIN0_BASE_ADDR_REG\n", __func__);
-				data0 = QLAFX00_RD_REG(ha,
-				    QLAFX00_BAR1_BASE_ADDR_REG);
-				data1 = QLAFX00_RD_REG(ha,
-				    QLAFX00_PEX0_WIN0_BASE_ADDR_REG);
-
-				data0 &= 0xffff0000;
-				data1 &= 0x0000ffff;
-
-				QLAFX00_WR_REG(ha,
-				    QLAFX00_PEX0_WIN0_BASE_ADDR_REG,
-				    (data0 | data1));
-				ql_dbg(ql_dbg_timer, vha, 0xffff,
-				    "ISPFx00(%s): Updating QLAFX00_PEX0_WIN0_BASE_ADDR_REG, aenmbx0: 0x%x\n", __func__, aenmbx0);
-			} else if (ha->mr.fw_reset_timer_exp) {
-				set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-				qla2xxx_wake_dpc(vha);
-				ha->mr.fw_reset_timer_exp = 0;
-				ql_dbg(ql_dbg_timer, vha, 0xffff,
-				    "ISPFx00(%s): Reset timer expired, aenmbx: 0x%x\n",
-				    __func__, aenmbx0);
-			} else if ((aenmbx0 & 0xFF00) == MBA_FW_POLL_STATE) {
-				ha->mr.fw_reset_timer_tick =
-				    QLAFX00_MAX_RESET_INTERVAL;
+		} else if ((aenmbx0 == MBA_FW_STARTING) &&
+		    (!ha->mr.fw_hbt_en)) {
+			ha->mr.fw_hbt_en = 1;
+		} else if (!ha->mr.fw_reset_timer_tick) {
+			if (aenmbx0 == ha->mr.old_aenmbx0_state)
 				ha->mr.fw_reset_timer_exp = 1;
-				ql_dbg(ql_dbg_timer, vha, 0xffff,
-				    "ISPFx00(%s): Reset timer extended to 10min, aenmbx0: 0x%x\n",
-				    __func__, aenmbx0);
-			}
+			ha->mr.fw_reset_timer_tick = QLAFX00_RESET_INTERVAL;
+		} else if (aenmbx0 == 0xFFFFFFFF) {
+			uint32_t data0, data1;
+
+			data0 = QLAFX00_RD_REG(ha,
+			    QLAFX00_BAR1_BASE_ADDR_REG);
+			data1 = QLAFX00_RD_REG(ha,
+			    QLAFX00_PEX0_WIN0_BASE_ADDR_REG);
+
+			data0 &= 0xffff0000;
+			data1 &= 0x0000ffff;
+
+			QLAFX00_WR_REG(ha,
+			    QLAFX00_PEX0_WIN0_BASE_ADDR_REG,
+			    (data0 | data1));
+		} else if ((aenmbx0 & 0xFF00) == MBA_FW_POLL_STATE) {
+			ha->mr.fw_reset_timer_tick =
+			    QLAFX00_MAX_RESET_INTERVAL;
 		}
+		ha->mr.old_aenmbx0_state = aenmbx0;
+		ha->mr.fw_reset_timer_tick--;
 	}
 }
 
