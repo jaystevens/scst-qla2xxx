@@ -5014,7 +5014,7 @@ qla2x00_timer(scsi_qla_host_t *vha)
 						&vha->dpc_flags);
 			}
 		}
-		ql_dbg(ql_dbg_timer + ql_dbg_verbose, vha, 0x600a,
+		ql_dbg(ql_dbg_timer, vha, 0x600a,
 		    "Loop down - seconds remaining %d.\n",
 		    atomic_read(&vha->loop_down_timer));
 	}
@@ -5045,7 +5045,7 @@ qla2x00_timer(scsi_qla_host_t *vha)
 	    test_bit(RELOGIN_NEEDED, &vha->dpc_flags) ||
 	    test_bit(HOST_RAMP_DOWN_QUEUE_DEPTH, &vha->dpc_flags) ||
 	    test_bit(HOST_RAMP_UP_QUEUE_DEPTH, &vha->dpc_flags))) {
-		ql_dbg(ql_dbg_timer + ql_dbg_verbose, vha, 0x600b,
+		ql_dbg(ql_dbg_timer, vha, 0x600b,
 		    "isp_abort_needed=%d loop_resync_needed=%d "
 		    "fcport_update_needed=%d start_dpc=%d "
 		    "reset_marker_needed=%d",
@@ -5054,7 +5054,7 @@ qla2x00_timer(scsi_qla_host_t *vha)
 		    test_bit(FCPORT_UPDATE_NEEDED, &vha->dpc_flags),
 		    start_dpc,
 		    test_bit(RESET_MARKER_NEEDED, &vha->dpc_flags));
-		ql_dbg(ql_dbg_timer + ql_dbg_verbose, vha, 0x600c,
+		ql_dbg(ql_dbg_timer, vha, 0x600c,
 		    "beacon_blink_needed=%d isp_unrecoverable=%d "
 		    "fcoe_ctx_reset_needed=%d vp_dpc_needed=%d "
 		    "relogin_needed=%d, host_ramp_down_needed=%d "

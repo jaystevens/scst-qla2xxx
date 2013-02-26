@@ -1110,10 +1110,6 @@ qlafx00_reset_initialize(scsi_qla_host_t *vha)
 
 	ql_log(ql_log_info, vha, 0x0143,
 	    "(%s): succeeded.\n", __func__);
-
-	ql_log(ql_log_info, vha, 0xffff,
-	    "(%s): Waiting for 8060.\n", __func__);
-
 	ha->flags.mr_reset_hdlr_active = 0;
 	return QLA_SUCCESS;
 }
@@ -1147,8 +1143,6 @@ qlafx00_abort_isp(scsi_qla_host_t *vha)
 	ql_log(ql_log_info, vha, 0x0145,
 	    "(%s): succeeded.\n", __func__);
 
-	ql_log(ql_log_info, vha, 0xffff,
-	    "(%s): Waiting for 8060.\n", __func__);
 	return QLA_SUCCESS;
 }
 
