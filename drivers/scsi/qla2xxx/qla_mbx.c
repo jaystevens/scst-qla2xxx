@@ -72,7 +72,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		return QLA_FUNCTION_TIMEOUT;
 	}
 
-	if (IS_QLA82XX(ha) && ha->flags.isp82xx_fw_hung) {
+	if (IS_P3P_TYPE(ha) && ha->flags.isp82xx_fw_hung) {
 		/* Setting Link-Down error */
 		mcp->mb[0] = MBS_LINK_DOWN_ERROR;
 		ql_log(ql_log_warn, vha, 0x1004,
@@ -103,9 +103,9 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	/* Load mailbox registers. */
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		optr = (uint16_t __iomem *)&reg->isp82.mailbox_in[0];
-	else if (IS_FWI2_CAPABLE(ha) && !IS_QLA82XX(ha))
+	else if (IS_FWI2_CAPABLE(ha) && !(IS_P3P_TYPE(ha)))
 		optr = (uint16_t __iomem *)&reg->isp24.mailbox0;
 	else
 		optr = (uint16_t __iomem *)MAILBOX_REG(ha, &reg->isp, 0);
@@ -156,7 +156,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 	if ((!abort_active && io_lock_on) || IS_NOPOLLING_TYPE(ha)) {
 		set_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags);
 
-		if (IS_QLA82XX(ha)) {
+		if (IS_P3P_TYPE(ha)) {
 			if (RD_REG_DWORD(&reg->isp82.hint) &
 				HINT_MBX_INT_PENDING) {
 				spin_unlock_irqrestore(&ha->hardware_lock,
@@ -182,7 +182,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		ql_dbg(ql_dbg_mbx, vha, 0x1011,
 		    "Cmd=%x Polling Mode.\n", command);
 
-		if (IS_QLA82XX(ha)) {
+		if (IS_P3P_TYPE(ha)) {
 			if (RD_REG_DWORD(&reg->isp82.hint) &
 				HINT_MBX_INT_PENDING) {
 				spin_unlock_irqrestore(&ha->hardware_lock,
@@ -229,7 +229,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		ha->flags.mbox_int = 0;
 		clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
 
-		if ((IS_QLA82XX(ha) && ha->flags.isp82xx_fw_hung)) {
+		if (IS_P3P_TYPE(ha) && ha->flags.isp82xx_fw_hung) {
 			ha->flags.mbox_busy = 0;
 			/* Setting Link-Down error */
 			mcp->mb[0] = MBS_LINK_DOWN_ERROR;
@@ -1194,7 +1194,7 @@ qla2x00_init_firmware(scsi_qla_host_t *vha, uint16_t size)
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x104c,
 	    "Entered %s.\n", __func__);
 
-	if (IS_QLA82XX(ha) && ql2xdbwr)
+	if (IS_P3P_TYPE(ha) && ql2xdbwr)
 		qla82xx_wr_32(ha, ha->nxdb_wr_ptr,
 			(0x04 | (ha->portnum << 5) | (0 << 8) | (0 << 16)));
 
@@ -4487,7 +4487,7 @@ qla82xx_mbx_intr_disable(scsi_qla_host_t *vha)
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x100d,
 	    "Entered %s.\n", __func__);
 
-	if (!IS_QLA82XX(ha))
+	if (!IS_P3P_TYPE(ha))
 		return QLA_FUNCTION_FAILED;
 
 	memset(mcp, 0, sizeof(mbx_cmd_t));

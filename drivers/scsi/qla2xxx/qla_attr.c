@@ -27,7 +27,7 @@ qla2x00_sysfs_read_fw_dump(struct kobject *kobj,
 	if (!(ha->fw_dump_reading || ha->mctp_dump_reading))
 		return 0;
 
-	if (IS_QLA82XX(ha)) {
+	if (IS_P3P_TYPE(ha)) {
 		if (off < ha->md_template_size) {
 			rval = memory_read_from_buffer(buf, count,
 			    &off, ha->md_tmplt_hdr, ha->md_template_size);
@@ -40,7 +40,7 @@ qla2x00_sysfs_read_fw_dump(struct kobject *kobj,
 	} else if (ha->mctp_dumped && ha->mctp_dump_reading)
 		return memory_read_from_buffer(buf, count, &off, ha->mctp_dump,
 		    MCTP_DUMP_SIZE);
-	else if (ha->fw_dump_reading) 
+	else if (ha->fw_dump_reading)
 		return memory_read_from_buffer(buf, count, &off, ha->fw_dump,
 					ha->fw_dump_len);
 	else
@@ -69,7 +69,7 @@ qla2x00_sysfs_write_fw_dump(struct kobject *kobj,
 		ql_log(ql_log_info, vha, 0x705d,
 		    "Firmware dump cleared on (%ld).\n", vha->host_no);
 
-		if (IS_QLA82XX(vha->hw)) {
+		if (IS_P3P_TYPE(ha)) {
 			qla82xx_md_free(vha);
 			qla82xx_md_prep(vha);
 		}
@@ -94,11 +94,15 @@ qla2x00_sysfs_write_fw_dump(struct kobject *kobj,
 			qla82xx_idc_lock(ha);
 			qla82xx_set_reset_owner(vha);
 			qla82xx_idc_unlock(ha);
+		} else if (IS_QLA8044(ha)) {
+			qla8044_idc_lock(ha);
+			qla82xx_set_reset_owner(vha);
+			qla8044_idc_unlock(ha);
 		} else
 			qla2x00_system_error(vha);
 		break;
 	case 4:
-		if (IS_QLA82XX(ha)) {
+		if (IS_P3P_TYPE(ha)) {
 			if (ha->md_tmplt_hdr)
 				ql_dbg(ql_dbg_user, vha, 0x705b,
 				    "MiniDump supported with this firmware.\n");
@@ -108,7 +112,7 @@ qla2x00_sysfs_write_fw_dump(struct kobject *kobj,
 		}
 		break;
 	case 5:
-		if (IS_QLA82XX(ha))
+		if (IS_P3P_TYPE(ha))
 			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 		break;
 	case 6:
@@ -602,6 +606,11 @@ qla2x00_sysfs_write_reset(struct kobject *kobj,
 			qla82xx_idc_lock(ha);
 			qla82xx_set_reset_owner(vha);
 			qla82xx_idc_unlock(ha);
+		} else if (IS_QLA8044(ha)) {
+			ha->flags.isp82xx_no_md_cap = 1;
+			qla8044_idc_lock(ha);
+			qla82xx_set_reset_owner(vha);
+			qla8044_idc_unlock(ha);
 		}
 		qla2xxx_wake_dpc(vha);
 		qla2x00_wait_for_chip_reset(vha);
@@ -639,7 +648,7 @@ qla2x00_sysfs_write_reset(struct kobject *kobj,
 			break;
 		}
 	case 0x2025e:
-		if (!IS_QLA82XX(ha) || vha != base_vha) {
+		if (!IS_P3P_TYPE(ha) || vha != base_vha) {
 			ql_log(ql_log_info, vha, 0x7071,
 			    "FCoE ctx reset no supported.\n");
 			return -EPERM;

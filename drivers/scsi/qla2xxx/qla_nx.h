@@ -590,6 +590,7 @@
  * The PCI VendorID and DeviceID for our board.
  */
 #define PCI_DEVICE_ID_QLOGIC_ISP8021		0x8021
+#define PCI_DEVICE_ID_QLOGIC_ISP8044		0x8044
 
 #define QLA82XX_MSIX_TBL_SPACE			8192
 #define QLA82XX_PCI_REG_MSIX_TBL		0x44
@@ -955,6 +956,11 @@ struct ct6_dsd {
 #define QLA82XX_CNTRL                  98
 #define QLA82XX_TLHDR                  99
 #define QLA82XX_RDEND                  255
+#define QLA8044_POLLRD			35
+#define QLA8044_RDMUX2			36
+#define QLA8044_L1DTG			8
+#define QLA8044_L1ITG			9
+#define QLA8044_POLLRDMWR		37
 
 /*
  * Opcodes for Control Entries.

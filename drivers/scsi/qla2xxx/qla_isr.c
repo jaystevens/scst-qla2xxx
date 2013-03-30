@@ -699,7 +699,7 @@ skip_rio:
 	case MBA_LOOP_DOWN:		/* Loop Down Event */
 		mbx = (IS_QLA81XX(ha) || IS_QLA8031(ha))
 			? RD_REG_WORD(&reg24->mailbox4) : 0;
-		mbx = IS_QLA82XX(ha) ? RD_REG_WORD(&reg82->mailbox_out[4])
+		mbx = (IS_P3P_TYPE(ha)) ? RD_REG_WORD(&reg82->mailbox_out[4])
 			: mbx;
 		ql_dbg(ql_dbg_async, vha, 0x500b,
 		    "LOOP DOWN detected (%x %x %x %x).\n",
@@ -749,7 +749,7 @@ skip_rio:
 		if (IS_QLA2100(ha))
 			break;
 
-		if (IS_QLA81XX(ha) || IS_QLA82XX(ha) || IS_QLA8031(ha)) {
+		if (IS_CNA_CAPABLE(ha)) {
 			ql_dbg(ql_dbg_async, vha, 0x500d,
 			    "DCBX Completed -- %04x %04x %04x.\n",
 			    mb[1], mb[2], mb[3]);
@@ -1063,7 +1063,7 @@ qla2x00_process_completed_request(struct scsi_qla_host *vha,
 		ql_log(ql_log_warn, vha, 0x3014,
 		    "Invalid SCSI command index (%x).\n", index);
 
-		if (IS_QLA82XX(ha))
+		if (IS_P3P_TYPE(ha))
 			set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
 		else
 			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -1080,7 +1080,7 @@ qla2x00_process_completed_request(struct scsi_qla_host *vha,
 	} else {
 		ql_log(ql_log_warn, vha, 0x3016, "Invalid SCSI SRB.\n");
 
-		if (IS_QLA82XX(ha))
+		if (IS_P3P_TYPE(ha))
 			set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
 		else
 			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -1100,7 +1100,7 @@ qla2x00_get_sp_from_handle(scsi_qla_host_t *vha, const char *func,
 	if (index >= req->num_outstanding_cmds) {
 		ql_log(ql_log_warn, vha, 0x5031,
 		    "Invalid command index (%x).\n", index);
-		if (IS_QLA82XX(ha))
+		if (IS_P3P_TYPE(ha))
 			set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
 		else
 			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -1943,7 +1943,7 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		ql_dbg(ql_dbg_io, vha, 0x3017,
 		    "Invalid status handle (0x%x).\n", sts->handle);
 
-		if (IS_QLA82XX(ha))
+		if (IS_P3P_TYPE(ha))
 			set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
 		else
 			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -2317,7 +2317,7 @@ fatal:
 	ql_log(ql_log_warn, vha, 0x5030,
 	    "Error entry - invalid handle/queue.\n");
 
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
 	else
 		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -2434,7 +2434,7 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 	}
 
 	/* Adjust ring index */
-	if (IS_QLA82XX(ha)) {
+	if (IS_P3P_TYPE(ha)) {
 		struct device_reg_82xx __iomem *reg = &ha->iobase->isp82;
 		WRT_REG_DWORD(&reg->rsp_q_out[0], rsp->ring_index);
 	} else
@@ -2831,7 +2831,7 @@ msix_failed:
 	/* Enable MSI-X vectors for the base queue */
 	for (i = 0; i < 2; i++) {
 		qentry = &ha->msix_entries[i];
-		if (IS_QLA82XX(ha)) {
+		if (IS_P3P_TYPE(ha)) {
 			ret = request_irq(qentry->vector,
 				qla82xx_msix_entries[i].handler,
 				0, qla82xx_msix_entries[i].name, rsp);
@@ -2897,7 +2897,7 @@ qla2x00_request_irqs(struct qla_hw_data *ha, struct rsp_que *rsp)
 		goto skip_msi;
 	}
 
-	if (IS_QLA2432(ha) && (ha->pdev->revision < QLA_MSIX_CHIP_REV_24XX)) { 
+	if (IS_QLA2432(ha) && (ha->pdev->revision < QLA_MSIX_CHIP_REV_24XX)) {
 		ql_log(ql_log_warn, vha, 0x0035,
 		    "MSI-X: Unsupported ISP2432 (0x%X, 0x%X).\n",
 		    ha->pdev->revision, ha->fw_attributes);
@@ -2916,7 +2916,7 @@ qla2x00_request_irqs(struct qla_hw_data *ha, struct rsp_que *rsp)
 skip_msix:
 
 	if (!IS_QLA24XX(ha) && !IS_QLA2532(ha) && !IS_QLA8432(ha) &&
-	    !IS_QLA8001(ha) && !IS_QLA82XX(ha) && !IS_QLAFX00(ha))
+	    !IS_QLA8001(ha) && !IS_P3P_TYPE(ha) && !IS_QLAFX00(ha))
 		goto skip_msi;
 
 	ret = pci_enable_msi(ha->pdev);
@@ -2929,7 +2929,7 @@ skip_msix:
 		    "MSI-X; Falling back-to INTa mode -- %d.\n", ret);
 
 	/* Skip INTx on ISP82xx. */
-	if (!ha->flags.msi_enabled && IS_QLA82XX(ha))
+	if (!ha->flags.msi_enabled && (IS_P3P_TYPE(ha)))
 		return QLA_FUNCTION_FAILED;
 
 skip_msi:

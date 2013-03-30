@@ -464,6 +464,9 @@ extern int qla24xx_write_optrom_data(struct scsi_qla_host *, uint8_t *,
     uint32_t, uint32_t);
 extern uint8_t *qla25xx_read_optrom_data(struct scsi_qla_host *, uint8_t *,
     uint32_t, uint32_t);
+extern uint8_t *qla8044_read_optrom_data(struct scsi_qla_host *,
+    uint8_t *, uint32_t, uint32_t);
+extern void qla8044_watchdog(struct scsi_qla_host *vha);
 
 extern int qla2x00_get_flash_version(scsi_qla_host_t *, void *);
 extern int qla24xx_get_flash_version(scsi_qla_host_t *, void *);
@@ -696,5 +699,24 @@ extern void qla82xx_md_free(scsi_qla_host_t *);
 extern int qla82xx_md_collect(scsi_qla_host_t *);
 extern void qla82xx_md_prep(scsi_qla_host_t *);
 extern void qla82xx_set_reset_owner(scsi_qla_host_t *);
+extern int qla82xx_validate_template_chksum(scsi_qla_host_t *vha);
+
+/* Function declarations for ISP8044 */
+extern int qla8044_idc_lock(struct qla_hw_data *ha);
+extern void qla8044_idc_unlock(struct qla_hw_data *ha);
+extern uint32_t qla8044_rd_reg(struct qla_hw_data *ha, ulong addr);
+extern void qla8044_wr_reg(struct qla_hw_data *ha, ulong addr, uint32_t val);
+extern void qla8044_read_reset_template(struct scsi_qla_host *ha);
+extern void qla8044_set_idc_dontreset(struct scsi_qla_host *ha);
+extern int qla8044_rd_direct(struct scsi_qla_host *vha, const uint32_t crb_reg);
+extern void qla8044_wr_direct(struct scsi_qla_host *vha,
+    const uint32_t crb_reg, const uint32_t value);
+extern inline void qla8044_set_qsnt_ready(struct scsi_qla_host *vha);
+extern inline void qla8044_need_reset_handler(struct scsi_qla_host *vha);
+extern int qla8044_device_state_handler(struct scsi_qla_host *vha);
+extern void qla8044_clear_qsnt_ready(struct scsi_qla_host *vha);
+extern void qla8044_clear_drv_active(struct scsi_qla_host *vha);
+void qla8044_get_minidump(struct scsi_qla_host *vha);
+int qla8044_collect_md_data(struct scsi_qla_host *vha);
 
 #endif /* _QLA_GBL_H */

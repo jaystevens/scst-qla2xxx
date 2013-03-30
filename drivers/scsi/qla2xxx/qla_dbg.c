@@ -11,7 +11,7 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0150       | 0x4b,0xba,0xfa,|
+ * | Module Init and Probe        |       0x0152       | 0x4b,0xba,0xfa,|
  * |                              |                    | 0x141,0x144,   |
  * |                              |                    | 0x146          |
  * | Mailbox commands             |       0x117b       | 0x111a-0x111b, |
@@ -38,9 +38,11 @@
  * |                              |                    | 0x70cf-0x70da  |
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |                              |                    | 0x800b,0x8039  |
- * | AER/EEH                      |       0x9011       | 		|
+ * | AER/EEH                      |       0x9011       |		|
  * | Virtual Port                 |       0xa008       |		|
- * | ISP82XX Specific             |       0xb086       | 0xb002,0xb024  |
+ * | ISP82XX Specific             |       0xb11a       | 0xb002,0xb024  |
+ * |                              |                    | 0xb09e,0xb0ae  |
+ * |                              |                    | 0xb0e0-0xb0ef  |
  * | MultiQ                       |       0xc00c       |		|
  * | Misc                         |       0xd010       |		|
  * ----------------------------------------------------------------------
@@ -886,7 +888,7 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	void		*nxt;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		return;
 
 	risc_address = ext_mem_cnt = 0;
@@ -2449,7 +2451,7 @@ ql_dump_regs(uint32_t level, scsi_qla_host_t *vha, int32_t id)
 	if (!ql_mask_match(level))
 		return;
 
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		mbx_reg = &reg82->mailbox_in[0];
 	else if (IS_FWI2_CAPABLE(ha))
 		mbx_reg = &reg24->mailbox0;
