@@ -14,7 +14,8 @@
  * | Module Init and Probe        |       0x0152       | 0x4b,0xba,0xfa,|
  * |                              |                    | 0x141,0x144,   |
  * |                              |                    | 0x146          |
- * | Mailbox commands             |       0x117e       | 0x111a-0x111b, |
+ * | Mailbox commands             |       0x117e       | 0x1018,0x10ca, |
+ * |                              |                    | 0x111a-0x111b, |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
  * |                              |                    | 0x2016         |
  * | Queue Command and IO tracing |       0x3051       | 0x3006-0x300b  |
@@ -35,7 +36,7 @@
  * |                              |                    | 0x70a5-0x70a6  |
  * |                              |                    | 0x70a8,0x70ab  |
  * |                              |                    | 0x70ad-0x70ae  |
- * |                              |                    | 0x70cf-0x70da  |
+ * |                              |                    | 0x70cf-0x70db  |
  * | Task Management              |       0x803d       | 0x8025-0x8026  |
  * |                              |                    | 0x800b,0x8039  |
  * | AER/EEH                      |       0x9011       |		|

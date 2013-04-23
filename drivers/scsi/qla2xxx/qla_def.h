@@ -3243,11 +3243,6 @@ struct qla_hw_data {
 	int             cfg_lun_q_depth;
 
 	struct mr_data_fx00 mr;
-
-	uint16_t	thermal_support;
-#define THERMAL_SUPPORT_I2C    BIT_0
-#define THERMAL_SUPPORT_ISP    BIT_1
-
 };
 
 /*
