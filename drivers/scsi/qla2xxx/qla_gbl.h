@@ -728,5 +728,6 @@ extern void qla8044_clear_qsnt_ready(struct scsi_qla_host *vha);
 extern void qla8044_clear_drv_active(struct scsi_qla_host *vha);
 void qla8044_get_minidump(struct scsi_qla_host *vha);
 int qla8044_collect_md_data(struct scsi_qla_host *vha);
+extern int qla8044_md_get_template(scsi_qla_host_t *);
 
 #endif /* _QLA_GBL_H */

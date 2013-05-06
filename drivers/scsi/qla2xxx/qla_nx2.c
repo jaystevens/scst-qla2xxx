@@ -2083,18 +2083,6 @@ qla8044_watchdog(struct scsi_qla_host *vha)
 	}
 }
 
-static void
-qla4_8xxx_mark_entry_skipped(struct scsi_qla_host *vha,
-	struct qla8044_minidump_entry_hdr *entry_hdr, int index)
-{
-	entry_hdr->d_ctrl.driver_flags |= QLA82XX_DBG_SKIPPED_FLAG;
-
-	ql_log(ql_log_info, vha, 0xb0dc,
-	    "scsi(%ld): Skipping entry[%d]: ETYPE[0x%x]-ELEVEL[0x%x]\n",
-	    vha->host_no, index, entry_hdr->entry_type,
-	    entry_hdr->d_ctrl.entry_capture_mask);
-}
-
 static int
 qla8044_minidump_process_control(struct scsi_qla_host *vha,
     struct qla8044_minidump_entry_hdr *entry_hdr)
@@ -2758,8 +2746,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 
 	tmplt_hdr = (struct qla8044_minidump_template_hdr *)
 		ha->md_tmplt_hdr;
-	data_ptr = (uint32_t *)((uint8_t *)ha->md_dump + ha->md_template_size);
-	data_collected += ha->md_template_size;
+	data_ptr = (uint32_t *)((uint8_t *)ha->md_dump);
 	num_entry_hdr = tmplt_hdr->num_of_entries;
 
 	ql_dbg(ql_dbg_p3p, vha, 0xb11a,
@@ -2860,7 +2847,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 			rval = qla8044_minidump_process_l2tag(vha,
 			    entry_hdr, &data_ptr);
 			if (rval != QLA_SUCCESS) {
-				qla4_8xxx_mark_entry_skipped(vha, entry_hdr, i);
+				qla8044_mark_entry_skipped(vha, entry_hdr, i);
 				goto md_failed;
 			}
 			break;
@@ -2906,8 +2893,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 		}
 
 		data_collected = (uint8_t *)data_ptr -
-		    ((uint8_t *)((uint8_t *)ha->md_dump +
-			ha->md_template_size));
+		    (uint8_t *)((uint8_t *)ha->md_dump);
 skip_nxt_entry:
 		/*
 		 * next entry in the template
@@ -2916,7 +2902,7 @@ skip_nxt_entry:
 		    (((uint8_t *)entry_hdr) + entry_hdr->entry_size);
 	}
 
-	if ((data_collected + ha->md_template_size) != ha->md_dump_size) {
+	if (data_collected != ha->md_dump_size) {
 		ql_log(ql_log_info, vha, 0xb105,
 		    "Dump data mismatch: Data collected: "
 		    "[0x%x], total_data_size:[0x%x]\n",

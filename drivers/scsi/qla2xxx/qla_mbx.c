@@ -4815,6 +4815,60 @@ qla82xx_md_get_template(scsi_qla_host_t *vha)
 }
 
 int
+qla8044_md_get_template(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+	int rval = QLA_FUNCTION_FAILED;
+	int offset = 0, size = MINIDUMP_SIZE_36K;
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0xb11f,
+	    "Entered %s.\n", __func__);
+
+	ha->md_tmplt_hdr = dma_alloc_coherent(&ha->pdev->dev,
+	   ha->md_template_size, &ha->md_tmplt_hdr_dma, GFP_KERNEL);
+	if (!ha->md_tmplt_hdr) {
+		ql_log(ql_log_warn, vha, 0xb11b,
+		    "Unable to allocate memory for Minidump template.\n");
+		return rval;
+	}
+
+	memset(mcp->mb, 0 , sizeof(mcp->mb));
+	while (offset < ha->md_template_size) {
+		mcp->mb[0] = LSW(MBC_DIAGNOSTIC_MINIDUMP_TEMPLATE);
+		mcp->mb[1] = MSW(MBC_DIAGNOSTIC_MINIDUMP_TEMPLATE);
+		mcp->mb[2] = LSW(RQST_TMPLT);
+		mcp->mb[3] = MSW(RQST_TMPLT);
+		mcp->mb[4] = LSW(LSD(ha->md_tmplt_hdr_dma + offset));
+		mcp->mb[5] = MSW(LSD(ha->md_tmplt_hdr_dma + offset));
+		mcp->mb[6] = LSW(MSD(ha->md_tmplt_hdr_dma + offset));
+		mcp->mb[7] = MSW(MSD(ha->md_tmplt_hdr_dma + offset));
+		mcp->mb[8] = LSW(size);
+		mcp->mb[9] = MSW(size);
+		mcp->mb[10] = offset & 0x0000FFFF;
+		mcp->mb[11] = offset & 0xFFFF0000;
+		mcp->flags = MBX_DMA_OUT|MBX_DMA_IN|IOCTL_CMD;
+		mcp->tov = MBX_TOV_SECONDS;
+		mcp->out_mb = MBX_11|MBX_10|MBX_9|MBX_8| \
+			MBX_7|MBX_6|MBX_5|MBX_4|MBX_3|MBX_2|MBX_1|MBX_0;
+		mcp->in_mb = MBX_3|MBX_2|MBX_1|MBX_0;
+		rval = qla2x00_mailbox_command(vha, mcp);
+
+		if (rval != QLA_SUCCESS) {
+			ql_dbg(ql_dbg_mbx, vha, 0xb11c,
+				"mailbox command FAILED=0x%x, subcode=%x.\n",
+				((mcp->mb[1] << 16) | mcp->mb[0]),
+				((mcp->mb[3] << 16) | mcp->mb[2]));
+			return rval;
+		} else
+			ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0xb11d,
+				"Done %s.\n", __func__);
+		offset = offset + size;
+	}
+	return rval;
+}
+
+int
 qla81xx_set_led_config(scsi_qla_host_t *vha, uint16_t *led_cfg)
 {
 	int rval;

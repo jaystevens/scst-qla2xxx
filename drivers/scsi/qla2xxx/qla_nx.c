@@ -4401,7 +4401,11 @@ qla82xx_md_prep(scsi_qla_host_t *vha)
 		    ha->md_template_size / 1024);
 
 		/* Get Minidump template */
-		rval = qla82xx_md_get_template(vha);
+		if (IS_QLA8044(ha))
+			rval = qla8044_md_get_template(vha);
+		else
+			rval = qla82xx_md_get_template(vha);
+
 		if (rval == QLA_SUCCESS) {
 			ql_dbg(ql_dbg_p3p, vha, 0xb04b,
 			    "MiniDump Template obtained\n");

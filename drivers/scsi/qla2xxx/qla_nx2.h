@@ -198,6 +198,8 @@
 #define QLA8044_IDC_DRV_CTRL            0x3790
 #define AF_8044_NO_FW_DUMP              27 /* 0x08000000 */
 
+#define MINIDUMP_SIZE_36K		36864
+
 struct qla8044_reset_template_hdr {
 	__le16	version;
 	__le16	signature;
