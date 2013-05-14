@@ -862,7 +862,6 @@ qla82xx_rom_lock(struct qla_hw_data *ha)
 {
 	int done = 0, timeout = 0;
 	uint32_t lock_owner = 0;
-	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
 
 	while (!done) {
 		/* acquire semaphore2 from PCI HW block */
@@ -871,9 +870,6 @@ qla82xx_rom_lock(struct qla_hw_data *ha)
 			break;
 		if (timeout >= qla82xx_rom_lock_timeout) {
 			lock_owner = qla82xx_rd_32(ha, QLA82XX_ROM_LOCK_ID);
-			ql_dbg(ql_dbg_p3p, vha, 0xb085,
-			    "Failed to acquire rom lock, acquired by %d.\n",
-			    lock_owner);
 			return -1;
 		}
 		timeout++;
