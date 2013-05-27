@@ -376,6 +376,23 @@ qla8044_flash_unlock(scsi_qla_host_t *vha)
 }
 
 
+static
+void qla8044_flash_lock_recovery(struct scsi_qla_host *vha)
+{
+
+	if (qla8044_flash_lock(vha)) {
+		/* Someone else is holding the lock. */
+		ql_log(ql_log_warn, vha, 0xb120, "Resetting flash_lock\n");
+	}
+
+	/*
+	 * Either we got the lock, or someone
+	 * else died while holding it.
+	 * In either case, unlock.
+	 */
+	qla8044_flash_unlock(vha);
+}
+
 /*
  * Address and length are byte address
  */
@@ -1284,13 +1301,13 @@ qla8044_device_bootstrap(struct scsi_qla_host *vha)
 	if (need_reset) {
 		/* We are trying to perform a recovery here. */
 		if (peg_stuck)
-			qla8044_lock_recovery(vha);
+			qla8044_flash_lock_recovery(vha);
 		goto dev_initialize;
 	} else  {
 		/* Start of day for this ha context. */
 		if (peg_stuck) {
 			/* Either we are the first or recovery in progress. */
-			qla8044_lock_recovery(vha);
+			qla8044_flash_lock_recovery(vha);
 			goto dev_initialize;
 		} else {
 			/* Firmware already running. */
