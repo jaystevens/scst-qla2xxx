@@ -11,7 +11,7 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0152       | 0x4b,0xba,0xfa,|
+ * | Module Init and Probe        |       0x0153       | 0x4b,0xba,0xfa,|
  * |                              |                    | 0x141,0x144,   |
  * |                              |                    | 0x146          |
  * | Mailbox commands             |       0x117e       | 0x1018,0x10ca, |
@@ -23,11 +23,11 @@
  * |                              |                    | 0x304b-0x304c  |
  * | DPC Thread                   |       0x4024       | 0x4002,0x4013  |
  * |                              |                    | 0x401e-0x401f  |
- * | Async Events                 |       0x5082       | 0x502b-0x502f  |
+ * | Async Events                 |       0x5084       | 0x502b-0x502f  |
  * |                              |                    | 0x503d,0x5044
  * |				  | 		       | 0x5047,0x5052  |
  * |				  | 		       | 0x5074,0x5075  |
- * | Timer Routines               |       0x6011       |                |
+ * | Timer Routines               |       0x6012       |                |
  * | User Space Interactions      |       0x70df       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |

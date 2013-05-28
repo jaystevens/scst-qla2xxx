@@ -908,21 +908,21 @@ qlafx00_configure_devices(scsi_qla_host_t *vha)
 }
 
 void
-qlafx00_abort_isp_cleanup(scsi_qla_host_t *vha)
+qlafx00_abort_isp_cleanup(scsi_qla_host_t *vha, bool critemp)
 {
 	struct qla_hw_data *ha = vha->hw;
 	fc_port_t *fcport;
 
 	vha->flags.online = 0;
-	ha->flags.chip_reset_done = 0;
 	ha->mr.fw_hbt_en = 0;
-	clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-	vha->qla_stats.total_isp_aborts++;
-
-	ql_log(ql_log_info, vha, 0x013f,
-	    "Performing ISP error recovery - ha = %p.\n", ha);
-
-	ha->isp_ops->reset_chip(vha);
+	if (!critemp) {
+		ha->flags.chip_reset_done = 0;
+		clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+		vha->qla_stats.total_isp_aborts++;
+		ql_log(ql_log_info, vha, 0x013f,
+		    "Performing ISP error recovery - ha = %p.\n", ha);
+		ha->isp_ops->reset_chip(vha);
+	}
 
 	if (atomic_read(&vha->loop_state) != LOOP_DOWN) {
 		atomic_set(&vha->loop_state, LOOP_DOWN);
@@ -942,12 +942,19 @@ qlafx00_abort_isp_cleanup(scsi_qla_host_t *vha)
 	}
 
 	if (!ha->flags.eeh_busy) {
-		/* Requeue all commands in outstanding command list. */
-		qla2x00_abort_all_cmds(vha, DID_RESET << 16);
+		if (critemp) {
+			qla2x00_abort_all_cmds(vha, DID_NO_CONNECT << 16);
+		} else {
+			/* Requeue all commands in outstanding command list. */
+			qla2x00_abort_all_cmds(vha, DID_RESET << 16);
+		}
 	}
 
 	qla2x00_free_irqs(vha);
-	set_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
+	if (critemp)
+		set_bit(FX00_CRITEMP_RECOVERY, &vha->dpc_flags);
+	else
+		set_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
 
 	/* Clear the Interrupts */
 	QLAFX00_CLR_INTR_REG(ha, QLAFX00_HST_INT_STS_BITS);
@@ -1033,6 +1040,7 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 	uint32_t fw_heart_beat;
 	uint32_t aenmbx0;
 	struct device_reg_fx00 __iomem *reg = &ha->iobase->ispfx00;
+	uint32_t tempc;
 
 	/* Check firmware health */
 	if (ha->mr.fw_hbt_cnt)
@@ -1104,6 +1112,29 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 		ha->mr.old_aenmbx0_state = aenmbx0;
 		ha->mr.fw_reset_timer_tick--;
 	}
+	if (test_bit(FX00_CRITEMP_RECOVERY, &vha->dpc_flags)) {
+		/*
+		 * Critical temperature recovery to be
+		 * performed in timer routine
+		 */
+		if (ha->mr.fw_critemp_timer_tick == 0) {
+			tempc = QLAFX00_GET_TEMPERATURE(ha);
+			ql_log(ql_dbg_timer, vha, 0x6012,
+			    "ISPFx00(%s): Critical temp timer, "
+			    "current SOC temperature: %d\n",
+			    __func__, tempc);
+			if (tempc < ha->mr.critical_temperature) {
+				set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+				clear_bit(FX00_CRITEMP_RECOVERY,
+				    &vha->dpc_flags);
+				qla2xxx_wake_dpc(vha);
+			}
+			ha->mr.fw_critemp_timer_tick =
+			    QLAFX00_CRITEMP_INTERVAL;
+		} else {
+			ha->mr.fw_critemp_timer_tick--;
+		}
+	}
 }
 
 /*
@@ -1131,7 +1162,7 @@ qlafx00_reset_initialize(scsi_qla_host_t *vha)
 
 	if (vha->flags.online) {
 		scsi_block_requests(vha->host);
-		qlafx00_abort_isp_cleanup(vha);
+		qlafx00_abort_isp_cleanup(vha, false);
 	}
 
 	ql_log(ql_log_info, vha, 0x0143,
@@ -1163,7 +1194,7 @@ qlafx00_abort_isp(scsi_qla_host_t *vha)
 		}
 
 		scsi_block_requests(vha->host);
-		qlafx00_abort_isp_cleanup(vha);
+		qlafx00_abort_isp_cleanup(vha, false);
 	} else {
 		scsi_block_requests(vha->host);
 		clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
@@ -1399,6 +1430,16 @@ qlafx00_process_aen(struct scsi_qla_host *vha, struct qla_work_evt *evt)
 		break;
 	case MBA_FW_INIT_FAILURE:
 		break;
+	case QLAFX00_MBA_TEMP_OVER:
+	case QLAFX00_MBA_TEMP_CRIT:	/* Critical temperature event */
+		ql_log(ql_log_info, vha, 0x5083,
+		    "Process critical temperature event "
+		    "aenmb[0]: %x\n",
+		    evt->u.aenfx.evtcode);
+		scsi_block_requests(vha->host);
+		qlafx00_abort_isp_cleanup(vha, true);
+		scsi_unblock_requests(vha->host);
+		break;
 	}
 	return rval;
 }
@@ -1587,6 +1628,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		    sizeof(vha->hw->mr.uboot_version));
 		memcpy(&vha->hw->mr.fru_serial_num, pinfo->fru_serial_num,
 		    sizeof(vha->hw->mr.fru_serial_num));
+		vha->hw->mr.critical_temperature = pinfo->nominal_temp_value;
 	} else if (fx_type == FXDISC_GET_PORT_INFO) {
 		port_info_data_t *pinfo =
 		    (port_info_data_t *) fdisc->u.fxiocb.rsp_addr;
@@ -1705,6 +1747,7 @@ qlafx00_initialize_adapter(scsi_qla_host_t *vha)
 {
 	int	rval;
 	struct qla_hw_data *ha = vha->hw;
+	uint32_t tempc;
 
 	/* Clear adapter flags. */
 	vha->flags.online = 0;
@@ -1757,6 +1800,11 @@ qlafx00_initialize_adapter(scsi_qla_host_t *vha)
 
 	rval = qla2x00_init_rings(vha);
 	ha->flags.chip_reset_done = 1;
+
+	tempc = QLAFX00_GET_TEMPERATURE(ha);
+	ql_dbg(ql_dbg_init, vha, 0x0153,
+	    "ISPFx00(%s): Critical temp timer, current SOC temperature: 0x%x\n",
+	    __func__, tempc);
 
 	return rval;
 }
@@ -2970,6 +3018,17 @@ qlafx00_async_event(scsi_qla_host_t *vha)
 		qlafx00_post_aenfx_work(vha, ha->aenmb[0],
 		    (uint32_t *)ha->aenmb, 4);
 		break;
+
+	case QLAFX00_MBA_TEMP_OVER:	/* Over temperature event */
+	case QLAFX00_MBA_TEMP_CRIT:	/* Critical temperature event */
+		ql_log(ql_log_info, vha, 0x5084,
+		    "Asynchronous critical temperature event received "
+		    "aenmb[0]: %x\n",
+		ha->aenmb[0]);
+		qlafx00_post_aenfx_work(vha, ha->aenmb[0],
+		    (uint32_t *)ha->aenmb, 1);
+		break;
+
 	default:
 		ha->aenmb[1] = RD_REG_WORD(&reg->aenmailbox1);
 		ha->aenmb[2] = RD_REG_WORD(&reg->aenmailbox2);
