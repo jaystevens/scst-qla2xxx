@@ -14,7 +14,7 @@
  * | Module Init and Probe        |       0x0153       | 0x4b,0xba,0xfa,|
  * |                              |                    | 0x141,0x144,   |
  * |                              |                    | 0x146          |
- * | Mailbox commands             |       0x117e       | 0x1018,0x10ca, |
+ * | Mailbox commands             |       0x117f       | 0x1018,0x10ca, |
  * |                              |                    | 0x111a-0x111b, |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
  * |                              |                    | 0x2016         |
