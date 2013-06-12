@@ -994,7 +994,7 @@ skip_rio:
 		    mb[1], mb[2], mb[3]);
 		break;
 	case MBA_IDC_NOTIFY:
-		if (IS_QLA8031(vha->hw)) {
+		if (IS_QLA8031(vha->hw) || IS_QLA8044(ha)) {
 			mb[4] = RD_REG_WORD(&reg24->mailbox4);
 			if (((mb[2] & 0x7fff) == MBC_PORT_RESET ||
 			    (mb[2] & 0x7fff) == MBC_SET_PORT_CONFIG) &&
@@ -1014,7 +1014,8 @@ skip_rio:
 			complete(&ha->lb_portup_comp);
 		/* Fallthru */
 	case MBA_IDC_TIME_EXT:
-		if (IS_QLA81XX(vha->hw) || IS_QLA8031(vha->hw))
+		if (IS_QLA81XX(vha->hw) || IS_QLA8031(vha->hw) ||
+		    IS_QLA8044(ha))
 			qla81xx_idc_event(vha, mb[0], mb[1]);
 		break;
 

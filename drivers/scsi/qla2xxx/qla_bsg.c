@@ -559,7 +559,7 @@ qla81xx_reset_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
 	uint16_t new_config[4];
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha))
+	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha) && !IS_QLA8044(ha))
 		goto done_reset_internal;
 
 	memset(new_config, 0 , sizeof(new_config));
@@ -629,7 +629,7 @@ qla81xx_set_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
 	int rval = 0;
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha))
+	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha) && !IS_QLA8044(ha))
 		goto done_set_internal;
 
 	if (mode == INTERNAL_LOOPBACK)
@@ -774,7 +774,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 
 	if (atomic_read(&vha->loop_state) == LOOP_READY &&
 	    (ha->current_topology == ISP_CFG_F ||
-	    ((IS_QLA81XX(ha) || IS_QLA8031(ha)) &&
+	    ((IS_QLA81XX(ha) || IS_QLA8031(ha) || IS_QLA8044(ha)) &&
 	    le32_to_cpu(*(uint32_t *)req_data) == ELS_OPCODE_BYTE
 	    && req_data_len == MAX_ELS_FRAME_PAYLOAD)) &&
 	    elreq.options == EXTERNAL_LOOPBACK) {
@@ -784,7 +784,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 		command_sent = INT_DEF_LB_ECHO_CMD;
 		rval = qla2x00_echo_test(vha, &elreq, response);
        } else {
-		if (IS_QLA81XX(ha) || IS_QLA8031(ha)) {
+		if (IS_QLA81XX(ha) || IS_QLA8031(ha) || IS_QLA8044(ha)) {
 			memset(config, 0, sizeof(config));
 			memset(new_config, 0, sizeof(new_config));
 
@@ -807,7 +807,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 			    "elreq.options=%04x\n", elreq.options);
 
 			if (elreq.options == EXTERNAL_LOOPBACK)
-				if (IS_QLA8031(ha))
+				if (IS_QLA8031(ha) || IS_QLA8044(ha))
 					rval = qla81xx_set_loopback_mode(vha,
 					    config, new_config, elreq.options);
 				else
