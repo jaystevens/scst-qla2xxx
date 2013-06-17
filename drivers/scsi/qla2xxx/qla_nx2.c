@@ -3356,3 +3356,117 @@ qla8044_write_optrom_data(struct scsi_qla_host *vha, uint8_t *buf,
 
 	return rval;
 }
+
+#define LEG_INT_PTR_B31		(1 << 31)
+#define LEG_INT_PTR_B30		(1 << 30)
+#define PF_BITS_MASK		(0xF << 16)
+/**
+ * qla8044_intr_handler() - Process interrupts for the ISP8044
+ * @irq:
+ * @dev_id: SCSI driver HA context
+ *
+ * Called by system whenever the host adapter generates an interrupt.
+ *
+ * Returns handled flag.
+ */
+irqreturn_t
+qla8044_intr_handler(int irq, void *dev_id)
+{
+	scsi_qla_host_t	*vha;
+	struct qla_hw_data *ha;
+	struct rsp_que *rsp;
+	struct device_reg_82xx __iomem *reg;
+	int		status = 0;
+	unsigned long	flags;
+	unsigned long	iter;
+	uint32_t	stat;
+	uint16_t	mb[4];
+	uint32_t leg_int_ptr = 0, pf_bit;
+
+	rsp = (struct rsp_que *) dev_id;
+	if (!rsp) {
+		ql_log(ql_log_info, NULL, 0xb143,
+		    "%s(): NULL response queue pointer\n", __func__);
+		return IRQ_NONE;
+	}
+	ha = rsp->hw;
+	vha = pci_get_drvdata(ha->pdev);
+
+	if (unlikely(pci_channel_offline(ha->pdev)))
+		return IRQ_HANDLED;
+
+	leg_int_ptr = qla8044_rd_reg(ha, LEG_INTR_PTR_OFFSET);
+
+	/* Legacy interrupt is valid if bit31 of leg_int_ptr is set */
+	if (!(leg_int_ptr & (LEG_INT_PTR_B31))) {
+		ql_dbg(ql_dbg_p3p, vha, 0xb144,
+		    "%s: Legacy Interrupt Bit 31 not set, "
+		    "spurious interrupt!\n", __func__);
+		return IRQ_NONE;
+	}
+
+	pf_bit = ha->portnum << 16;
+	/* Validate the PCIE function ID set in leg_int_ptr bits [19..16] */
+	if ((leg_int_ptr & (PF_BITS_MASK)) != pf_bit) {
+		ql_dbg(ql_dbg_p3p, vha, 0xb145,
+		    "%s: Incorrect function ID 0x%x in "
+		    "legacy interrupt register, "
+		    "ha->pf_bit = 0x%x\n", __func__,
+		    (leg_int_ptr & (PF_BITS_MASK)), pf_bit);
+		return IRQ_NONE;
+	}
+
+	/* To de-assert legacy interrupt, write 0 to Legacy Interrupt Trigger
+	 * Control register and poll till Legacy Interrupt Pointer register
+	 * bit32 is 0.
+	 */
+	qla8044_wr_reg(ha, LEG_INTR_TRIG_OFFSET, 0);
+	do {
+		leg_int_ptr = qla8044_rd_reg(ha, LEG_INTR_PTR_OFFSET);
+		if ((leg_int_ptr & (PF_BITS_MASK)) != pf_bit)
+			break;
+	} while (leg_int_ptr & (LEG_INT_PTR_B30));
+
+	reg = &ha->iobase->isp82;
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	for (iter = 1; iter--; ) {
+
+		if (RD_REG_DWORD(&reg->host_int)) {
+			stat = RD_REG_DWORD(&reg->host_status);
+			if ((stat & HSRX_RISC_INT) == 0)
+				break;
+
+			switch (stat & 0xff) {
+			case 0x1:
+			case 0x2:
+			case 0x10:
+			case 0x11:
+				qla82xx_mbx_completion(vha, MSW(stat));
+				status |= MBX_INTERRUPT;
+				break;
+			case 0x12:
+				mb[0] = MSW(stat);
+				mb[1] = RD_REG_WORD(&reg->mailbox_out[1]);
+				mb[2] = RD_REG_WORD(&reg->mailbox_out[2]);
+				mb[3] = RD_REG_WORD(&reg->mailbox_out[3]);
+				qla2x00_async_event(vha, rsp, mb);
+				break;
+			case 0x13:
+				qla24xx_process_response_queue(vha, rsp);
+				break;
+			default:
+				ql_dbg(ql_dbg_p3p, vha, 0xb146,
+				    "Unrecognized interrupt type "
+				    "(%d).\n", stat & 0xff);
+				break;
+			}
+		}
+		WRT_REG_DWORD(&reg->host_int, 0);
+	}
+
+	qla2x00_handle_mbx_completion(ha, status);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+
+	return IRQ_HANDLED;
+}
+

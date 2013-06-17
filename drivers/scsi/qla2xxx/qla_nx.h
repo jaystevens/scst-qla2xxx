@@ -1198,4 +1198,8 @@ enum {
 	QLA82XX_TEMP_WARN,       	/* Sound alert, temperature getting high */
 	QLA82XX_TEMP_PANIC       	/* Fatal error, hardware has shut down. */
 };
+
+#define LEG_INTR_PTR_OFFSET	0x38C0
+#define LEG_INTR_TRIG_OFFSET	0x38C4
+#define LEG_INTR_MASK_OFFSET	0x38C8
 #endif

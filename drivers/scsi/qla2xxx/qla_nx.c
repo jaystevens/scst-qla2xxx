@@ -1964,7 +1964,7 @@ static struct qla82xx_legacy_intr_set legacy_intr[] = \
  * @ha: SCSI driver HA context
  * @mb0: Mailbox0 register
  */
-static void
+void
 qla82xx_mbx_completion(scsi_qla_host_t *vha, uint16_t mb0)
 {
 	uint16_t	cnt;
@@ -2230,7 +2230,10 @@ qla82xx_enable_intrs(struct qla_hw_data *ha)
 	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
 	qla82xx_mbx_intr_enable(vha);
 	spin_lock_irq(&ha->hardware_lock);
-	qla82xx_wr_32(ha, ha->nx_legacy_intr.tgt_mask_reg, 0xfbff);
+	if (IS_QLA8044(ha))
+		qla8044_wr_reg(ha, LEG_INTR_MASK_OFFSET, 0);
+	else
+		qla82xx_wr_32(ha, ha->nx_legacy_intr.tgt_mask_reg, 0xfbff);
 	spin_unlock_irq(&ha->hardware_lock);
 	ha->interrupts_on = 1;
 }
@@ -2241,7 +2244,10 @@ qla82xx_disable_intrs(struct qla_hw_data *ha)
 	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
 	qla82xx_mbx_intr_disable(vha);
 	spin_lock_irq(&ha->hardware_lock);
-	qla82xx_wr_32(ha, ha->nx_legacy_intr.tgt_mask_reg, 0x0400);
+	if (IS_QLA8044(ha))
+		qla8044_wr_reg(ha, LEG_INTR_MASK_OFFSET, 1);
+	else
+		qla82xx_wr_32(ha, ha->nx_legacy_intr.tgt_mask_reg, 0x0400);
 	spin_unlock_irq(&ha->hardware_lock);
 	ha->interrupts_on = 0;
 }

@@ -2918,7 +2918,7 @@ skip_msix:
 		    "MSI-X; Falling back-to INTa mode -- %d.\n", ret);
 
 	/* Skip INTx on ISP82xx. */
-	if (!ha->flags.msi_enabled && (IS_P3P_TYPE(ha)))
+	if (!ha->flags.msi_enabled && IS_QLA82XX(ha))
 		return QLA_FUNCTION_FAILED;
 
 skip_msi:
