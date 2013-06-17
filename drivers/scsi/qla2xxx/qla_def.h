@@ -3142,6 +3142,7 @@ struct qla_hw_data {
 	uint32_t	nvram_data_off;
 
 	uint32_t	fdt_wrt_disable;
+	uint32_t	fdt_wrt_enable;
 	uint32_t	fdt_erase_cmd;
 	uint32_t	fdt_block_size;
 	uint32_t	fdt_unprotect_sec_cmd;
