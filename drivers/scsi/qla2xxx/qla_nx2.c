@@ -32,7 +32,7 @@ qla8044_rd_direct(struct scsi_qla_host *vha,
 	if (crb_reg < CRB_REG_INDEX_MAX)
 		return qla8044_rd_reg(ha, qla8044_reg_tbl[crb_reg]);
 	else
-		return -1;
+		return QLA_FUNCTION_FAILED;
 }
 
 void
@@ -61,7 +61,7 @@ qla8044_set_win_base(scsi_qla_host_t *vha, uint32_t addr)
 		    "%s: Failed to set register window : "
 		    "addr written 0x%x, read 0x%x!\n",
 		    __func__, addr, val);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 	}
 	return ret_val;
 }
@@ -206,7 +206,7 @@ qla8044_lock_recovery(struct scsi_qla_host *vha)
 
 	/* Check for other Recovery in progress, go wait */
 	if ((lockid & IDC_LOCK_RECOVERY_STATE_MASK) != 0)
-		return -1;
+		return QLA_FUNCTION_FAILED;
 
 	/* Intent to Recover */
 	qla8044_wr_reg(ha, QLA8044_DRV_LOCKRECOVERY,
@@ -218,7 +218,7 @@ qla8044_lock_recovery(struct scsi_qla_host *vha)
 	lockid = qla8044_rd_reg(ha, QLA8044_DRV_LOCKRECOVERY);
 	if ((lockid & IDC_LOCK_RECOVERY_OWNER_MASK) != (ha->portnum <<
 	    IDC_LOCK_RECOVERY_STATE_SHIFT_BITS))
-		return -1;
+		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_p3p, vha, 0xb08B, "%s:%d: IDC Lock recovery initiated\n"
 	    , __func__, ha->portnum);
@@ -243,7 +243,7 @@ qla8044_lock_recovery(struct scsi_qla_host *vha)
 		qla8044_wr_reg(ha, QLA8044_DRV_LOCK_ID, lockid);
 		return QLA_SUCCESS;
 	} else
-		return -1;
+		return QLA_FUNCTION_FAILED;
 }
 
 int
@@ -357,7 +357,7 @@ qla8044_flash_lock(scsi_qla_host_t *vha)
 			ql_log(ql_log_warn, vha, 0xb113,
 			    "%s: flash lock by %d failed, held by %d\n",
 				__func__, ha->portnum, lock_owner);
-			ret_val = -1;
+			ret_val = QLA_FUNCTION_FAILED;
 			break;
 		}
 		msleep(20);
@@ -405,15 +405,15 @@ qla8044_read_flash_data(scsi_qla_host_t *vha,  uint8_t *p_data,
 	int i, ret_val = QLA_SUCCESS;
 	uint32_t u32_word;
 
-	if (qla8044_flash_lock(vha) != 0) {
-		ret_val = -1;
+	if (qla8044_flash_lock(vha) != QLA_SUCCESS) {
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_lock_error;
 	}
 
 	if (flash_addr & 0x03) {
 		ql_log(ql_log_warn, vha, 0xb117,
 		    "%s: Illegal addr = 0x%x\n", __func__, flash_addr);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_flash_read;
 	}
 
@@ -424,7 +424,7 @@ qla8044_read_flash_data(scsi_qla_host_t *vha,  uint8_t *p_data,
 			    "%s: failed to write addr 0x%x to "
 			    "FLASH_DIRECT_WINDOW\n! ",
 			    __func__, flash_addr);
-			ret_val = -1;
+			ret_val = QLA_FUNCTION_FAILED;
 			goto exit_flash_read;
 		}
 
@@ -548,7 +548,7 @@ qla8044_read_write_list(struct scsi_qla_host *vha,
  * @test_mask : Mask value read with "test_mask"
  * @test_result : Compare (value&test_mask) with test_result.
  *
- * Return Value - QLA_SUCCESS/QLA_ERROR
+ * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
 static int
 qla8044_poll_reg(struct scsi_qla_host *vha, uint32_t addr,
@@ -560,7 +560,7 @@ qla8044_poll_reg(struct scsi_qla_host *vha, uint32_t addr,
 	int ret_val = QLA_SUCCESS;
 
 	ret_val = qla8044_rd_reg_indirect(vha, addr, &value);
-	if (ret_val == -1) {
+	if (ret_val == QLA_FUNCTION_FAILED) {
 		timeout_error = 1;
 		goto exit_poll_reg;
 	}
@@ -573,7 +573,7 @@ qla8044_poll_reg(struct scsi_qla_host *vha, uint32_t addr,
 			timeout_error = 1;
 			msleep(duration/10);
 			ret_val = qla8044_rd_reg_indirect(vha, addr, &value);
-			if (ret_val == -1) {
+			if (ret_val == QLA_FUNCTION_FAILED) {
 				timeout_error = 1;
 				goto exit_poll_reg;
 			}
@@ -706,8 +706,8 @@ qla8044_poll_write_list(struct scsi_qla_host *vha,
  * @p_hdr : header with shift/or/xor values.
  *
  */
-static
-void qla8044_read_modify_write(struct scsi_qla_host *vha,
+static void
+qla8044_read_modify_write(struct scsi_qla_host *vha,
 	struct qla8044_reset_entry_hdr *p_hdr)
 {
 	struct qla8044_entry *p_entry;
@@ -935,7 +935,7 @@ qla8044_lockless_flash_read_u32(struct scsi_qla_host *vha,
 	if (addr & 0x3) {
 		ql_log(ql_log_fatal, vha, 0xb09b, "%s: Illegal addr = 0x%x\n",
 		    __func__, addr);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_lockless_read;
 	}
 
@@ -1009,7 +1009,7 @@ exit_lockless_read:
  * data : Data to be written
  * count : word_count to be written
  *
- * Return Value - QLA_SUCCESS/QLA_ERROR
+ * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
 int
 qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
@@ -1022,14 +1022,14 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 
 	/* Only 128-bit aligned access */
 	if (addr & 0xF) {
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_ms_mem_write;
 	}
 	write_lock_irqsave(&ha->hw_lock, flags);
 
 	/* Write address */
 	ret_val = qla8044_wr_reg_indirect(vha, MD_MIU_TEST_AGT_ADDR_HI, 0);
-	if (ret_val == -1) {
+	if (ret_val == QLA_FUNCTION_FAILED) {
 		ql_log(ql_log_fatal, vha, 0xb0a1,
 		    "%s: write to AGT_ADDR_HI failed!\n", __func__);
 		goto exit_ms_mem_write_unlock;
@@ -1040,7 +1040,7 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 		    QLA8044_ADDR_QDR_NET_MAX)) ||
 		    (QLA8044_ADDR_IN_RANGE(addr, QLA8044_ADDR_DDR_NET,
 			QLA8044_ADDR_DDR_NET_MAX)))) {
-			ret_val = -1;
+			ret_val = QLA_FUNCTION_FAILED;
 			goto exit_ms_mem_write_unlock;
 		}
 
@@ -1056,7 +1056,7 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 		    MD_MIU_TEST_AGT_WRDATA_ULO, *data++);
 		ret_val += qla8044_wr_reg_indirect(vha,
 		    MD_MIU_TEST_AGT_WRDATA_UHI, *data++);
-		if (ret_val == -1) {
+		if (ret_val == QLA_FUNCTION_FAILED) {
 			ql_log(ql_log_fatal, vha, 0xb0a2,
 			    "%s: write to AGT_WRDATA failed!\n",
 			    __func__);
@@ -1068,7 +1068,7 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 		    MIU_TA_CTL_WRITE_ENABLE);
 		ret_val += qla8044_wr_reg_indirect(vha, MD_MIU_TEST_AGT_CTRL,
 		    MIU_TA_CTL_WRITE_START);
-		if (ret_val == -1) {
+		if (ret_val == QLA_FUNCTION_FAILED) {
 			ql_log(ql_log_fatal, vha, 0xb0a3,
 			    "%s: write to AGT_CTRL failed!\n", __func__);
 			goto exit_ms_mem_write_unlock;
@@ -1077,7 +1077,7 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 		for (j = 0; j < MAX_CTL_CHECK; j++) {
 			ret_val = qla8044_rd_reg_indirect(vha,
 			    MD_MIU_TEST_AGT_CTRL, &agt_ctrl);
-			if (ret_val == -1) {
+			if (ret_val == QLA_FUNCTION_FAILED) {
 				ql_log(ql_log_fatal, vha, 0xb0a4,
 				    "%s: failed to read "
 				    "MD_MIU_TEST_AGT_CTRL!\n", __func__);
@@ -1092,7 +1092,7 @@ qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 			ql_log(ql_log_fatal, vha, 0xb0a5,
 			    "%s: MS memory write failed!\n",
 			   __func__);
-			ret_val = -1;
+			ret_val = QLA_FUNCTION_FAILED;
 			goto exit_ms_mem_write_unlock;
 		}
 	}
@@ -1129,13 +1129,13 @@ qla8044_copy_bootloader(struct scsi_qla_host *vha)
 		ql_log(ql_log_fatal, vha, 0xb0a6,
 		    "%s: Failed to allocate memory for "
 		    "boot loader cache\n", __func__);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_copy_bootloader;
 	}
 
 	ret_val = qla8044_lockless_flash_read_u32(vha, src,
 	    p_cache, size/sizeof(uint32_t));
-	if (ret_val == -1) {
+	if (ret_val == QLA_FUNCTION_FAILED) {
 		ql_log(ql_log_fatal, vha, 0xb0a7,
 		    "%s: Error reading F/W from flash!!!\n", __func__);
 		goto exit_copy_error;
@@ -1146,7 +1146,7 @@ qla8044_copy_bootloader(struct scsi_qla_host *vha)
 	/* 128 bit/16 byte write to MS memory */
 	ret_val = qla8044_ms_mem_write_128b(vha, dest,
 	    (uint32_t *)p_cache, count);
-	if (ret_val == -1) {
+	if (ret_val == QLA_FUNCTION_FAILED) {
 		ql_log(ql_log_fatal, vha, 0xb0a9, "%s: "
 		    "Error writing F/W to MS !!!\n", __func__);
 		goto exit_copy_error;
@@ -1180,7 +1180,7 @@ qla8044_restart(struct scsi_qla_host *vha)
 		ql_log(ql_log_fatal, vha, 0xb0ab,
 		    "%s: Copy bootloader, firmware restart failed!\n",
 		    __func__);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_restart;
 	}
 
@@ -1201,12 +1201,12 @@ exit_restart:
  *
  * @ha : Pointer to adapter structure
  *
- * Return Value - QLA_SUCCESS/QLA_ERROR
+ * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
 int
 qla8044_check_cmd_peg_status(struct scsi_qla_host *vha)
 {
-	uint32_t val, ret_val = -1;
+	uint32_t val, ret_val = QLA_FUNCTION_FAILED;
 	int retries = CRB_CMDPEG_CHECK_RETRY_COUNT;
 	struct qla_hw_data *ha = vha->hw;
 
@@ -1234,7 +1234,7 @@ qla8044_start_firmware(struct scsi_qla_host *vha)
 		ql_log(ql_log_fatal, vha, 0xb0ad,
 		    "%s: Restart Error!!!, Need Reset!!!\n",
 		    __func__);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 		goto exit_start_fw;
 	} else
 		ql_dbg(ql_dbg_p3p, vha, 0xb0af,
@@ -1244,7 +1244,7 @@ qla8044_start_firmware(struct scsi_qla_host *vha)
 	if (ret_val) {
 		ql_log(ql_log_fatal, vha, 0xb0b0,
 		    "%s: Peg not initialized!\n", __func__);
-		ret_val = -1;
+		ret_val = QLA_FUNCTION_FAILED;
 	}
 
 exit_start_fw:
@@ -1276,7 +1276,7 @@ qla8044_clear_drv_active(struct scsi_qla_host *vha)
 int
 qla8044_device_bootstrap(struct scsi_qla_host *vha)
 {
-	int rval = -1;
+	int rval = QLA_FUNCTION_FAILED;
 	int i, timeout;
 	uint32_t old_count, count;
 	int need_reset = 0, peg_stuck = 1;
@@ -1383,7 +1383,7 @@ qla8044_dump_reset_seq_hdr(struct scsi_qla_host *vha)
  *
  * @ha : Pointer to adapter structure
  *
- * Return Value - QLA_SUCCESS/QLA_ERROR
+ * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
 int
 qla8044_reset_seq_checksum_test(struct scsi_qla_host *vha)
@@ -1404,7 +1404,7 @@ qla8044_reset_seq_checksum_test(struct scsi_qla_host *vha)
 	} else {
 		ql_log(ql_log_fatal, vha, 0xb0b7,
 		    "%s: Reset seq checksum failed\n", __func__);
-		return -1;
+		return QLA_FUNCTION_FAILED;
 	}
 }
 
@@ -1698,7 +1698,7 @@ qla8044_set_idc_ver(struct scsi_qla_host *vha)
 			    "of other drivers!\n",
 			    __func__, QLA8044_IDC_VER_MAJ_VALUE,
 			    idc_ver);
-			rval = -1;
+			rval = QLA_FUNCTION_FAILED;
 			goto exit_set_idc_ver;
 		}
 	}
@@ -1735,7 +1735,7 @@ qla8044_update_idc_reg(struct scsi_qla_host *vha)
 		qla8044_clear_idc_dontreset(vha);
 
 	rval = qla8044_set_idc_ver(vha);
-	if (rval == -1)
+	if (rval == QLA_FUNCTION_FAILED)
 		qla8044_clear_drv_active(vha);
 	qla8044_idc_unlock(ha);
 
@@ -1820,7 +1820,7 @@ qla8044_device_state_handler(struct scsi_qla_host *vha)
 	struct qla_hw_data *ha = vha->hw;
 
 	rval = qla8044_update_idc_reg(vha);
-	if (rval == -1)
+	if (rval == QLA_FUNCTION_FAILED)
 		goto exit_error;
 
 	dev_state = qla8044_rd_direct(vha, QLA8044_CRB_DEV_STATE_INDEX);
@@ -1893,13 +1893,13 @@ qla8044_device_state_handler(struct scsi_qla_host *vha)
 		case QLA8XXX_DEV_FAILED:
 			qla8044_idc_unlock(ha);
 			qla8xxx_dev_failed_handler(vha);
-			rval = -1;
+			rval = QLA_FUNCTION_FAILED;
 			qla8044_idc_lock(ha);
 			goto exit;
 		default:
 			qla8044_idc_unlock(ha);
 			qla8xxx_dev_failed_handler(vha);
-			rval = -1;
+			rval = QLA_FUNCTION_FAILED;
 			qla8044_idc_lock(ha);
 			goto exit;
 		}
@@ -1932,7 +1932,7 @@ qla8044_check_temp(struct scsi_qla_host *vha)
 		    "Device temperature %d degrees C"
 		    " exceeds maximum allowed. Hardware has been shut"
 		    " down\n", temp_val);
-		status = -1;
+		status = QLA_FUNCTION_FAILED;
 		return status;
 	} else if (temp_state == QLA82XX_TEMP_WARN) {
 		ql_log(ql_log_warn, vha, 0xb0d3,
@@ -1993,7 +1993,7 @@ qla8044_check_fw_alive(struct scsi_qla_host *vha)
 			    "PEG_HALT_STATUS2: 0x%x,\n",
 			    vha->host_no, __func__, halt_status1,
 			    halt_status2);
-			status = -1;
+			status = QLA_FUNCTION_FAILED;
 		}
 	} else
 		vha->seconds_since_last_heartbeat = 0;
@@ -2145,7 +2145,7 @@ qla8044_minidump_process_control(struct scsi_qla_host *vha,
 					break;
 				} else if (time_after_eq(jiffies, wtime)) {
 					/* capturing dump failed */
-					rval = -1;
+					rval = QLA_FUNCTION_FAILED;
 					break;
 				} else {
 					qla8044_rd_reg_indirect(vha,
@@ -2253,14 +2253,14 @@ qla8044_minidump_process_rdmem(struct scsi_qla_host *vha,
 		ql_dbg(ql_dbg_p3p, vha, 0xb0f1,
 		    "[%s]: Read addr 0x%x not 16 bytes alligned\n",
 		    __func__, r_addr);
-		return -1;
+		return QLA_FUNCTION_FAILED;
 	}
 
 	if (m_hdr->read_data_size % 16) {
 		ql_dbg(ql_dbg_p3p, vha, 0xb0f2,
 		    "[%s]: Read data[0x%x] not multiple of 16 bytes\n",
 		    __func__, m_hdr->read_data_size);
-		return -1;
+		return QLA_FUNCTION_FAILED;
 	}
 
 	ql_dbg(ql_dbg_p3p, vha, 0xb0f3,
@@ -2331,7 +2331,7 @@ qla8044_minidump_process_rdrom(struct scsi_qla_host *vha,
 	if (rval != QLA_SUCCESS) {
 		ql_log(ql_log_fatal, vha, 0xb0f6,
 		    "%s: Flash Read Error,Count=%d\n", __func__, u32_count);
-		return -1;
+		return QLA_FUNCTION_FAILED;
 	} else {
 		data_ptr += u32_count;
 		*d_ptr = data_ptr;
@@ -2361,7 +2361,7 @@ qla8044_minidump_process_l2tag(struct scsi_qla_host *vha,
 	unsigned long p_wait, w_time, p_mask;
 	uint32_t c_value_w, c_value_r;
 	struct qla8044_minidump_entry_cache *cache_hdr;
-	int rval = -1;
+	int rval = QLA_FUNCTION_FAILED;
 	uint32_t *data_ptr = *d_ptr;
 
 	ql_dbg(ql_dbg_p3p, vha, 0xb0f8, "Entering fn: %s\n", __func__);
@@ -2579,7 +2579,7 @@ qla8044_minidump_process_pollrd(struct scsi_qla_host *vha,
 	return QLA_SUCCESS;
 
 error:
-	return -1;
+	return QLA_FUNCTION_FAILED;
 }
 
 void
@@ -2689,7 +2689,7 @@ qla8044_minidump_process_pollrdmwr(struct scsi_qla_host *vha,
 	return QLA_SUCCESS;
 
 error:
-	return -1;
+	return QLA_FUNCTION_FAILED;
 }
 
 /*
@@ -2705,7 +2705,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 	struct qla8044_minidump_template_hdr *tmplt_hdr;
 	uint32_t *data_ptr;
 	uint32_t data_collected = 0, f_capture_mask ;
-	int i, rval = -1;
+	int i, rval = QLA_FUNCTION_FAILED;
 	uint64_t now;
 	uint32_t timestamp;
 	struct qla_hw_data *ha = vha->hw;
