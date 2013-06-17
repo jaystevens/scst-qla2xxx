@@ -1632,23 +1632,6 @@ qla8044_need_reset_handler(struct scsi_qla_host *vha)
 		/* Start Reset Recovery */
 		qla8044_device_bootstrap(vha);
 	}
-
-	/* Force to DEV_COLD unless someone else is starting a reset */
-	if (dev_state != QLA8XXX_DEV_INITIALIZING &&
-	    dev_state != QLA8XXX_DEV_COLD) {
-		ql_log(ql_log_info, vha, 0xb107,
-		    "HW State: COLD/RE-INIT.\n");
-		qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
-		    QLA8XXX_DEV_COLD);
-		qla8044_set_rst_ready(vha);
-		if (ql2xmdenable) {
-			if (qla8044_collect_md_data(vha))
-				ql_log(ql_log_warn, vha, 0xb108,
-				    "Minidump not collected.\n");
-		} else
-			ql_log(ql_log_warn, vha, 0xb111,
-			    "Minidump disabled.\n");
-	}
 }
 
 void
