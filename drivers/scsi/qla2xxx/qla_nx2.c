@@ -920,7 +920,7 @@ qla8044_process_start_seq(struct scsi_qla_host *vha)
 		    __func__);
 }
 
-int
+static int
 qla8044_lockless_flash_read_u32(struct scsi_qla_host *vha,
 	uint32_t flash_addr, uint8_t *p_data, int u32_word_count)
 {
@@ -1011,7 +1011,7 @@ exit_lockless_read:
  *
  * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
-int
+static int
 qla8044_ms_mem_write_128b(struct scsi_qla_host *vha,
 	uint64_t addr, uint32_t *data, uint32_t count)
 {
@@ -1104,7 +1104,7 @@ exit_ms_mem_write:
 	return ret_val;
 }
 
-int
+static int
 qla8044_copy_bootloader(struct scsi_qla_host *vha)
 {
 	uint8_t *p_cache;
@@ -1162,7 +1162,7 @@ exit_copy_bootloader:
 	return ret_val;
 }
 
-int
+static int
 qla8044_restart(struct scsi_qla_host *vha)
 {
 	int ret_val = QLA_SUCCESS;
@@ -1203,7 +1203,7 @@ exit_restart:
  *
  * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
-int
+static int
 qla8044_check_cmd_peg_status(struct scsi_qla_host *vha)
 {
 	uint32_t val, ret_val = QLA_FUNCTION_FAILED;
@@ -1225,7 +1225,7 @@ qla8044_check_cmd_peg_status(struct scsi_qla_host *vha)
 	return ret_val;
 }
 
-int
+static int
 qla8044_start_firmware(struct scsi_qla_host *vha)
 {
 	int ret_val = QLA_SUCCESS;
@@ -1273,7 +1273,7 @@ qla8044_clear_drv_active(struct scsi_qla_host *vha)
  *
  * Note: IDC lock must be held upon entry
  **/
-int
+static int
 qla8044_device_bootstrap(struct scsi_qla_host *vha)
 {
 	int rval = QLA_FUNCTION_FAILED;
@@ -1356,7 +1356,7 @@ dev_ready:
 }
 
 /*-------------------------Reset Sequence Functions-----------------------*/
-void
+static void
 qla8044_dump_reset_seq_hdr(struct scsi_qla_host *vha)
 {
 	u8 *phdr;
@@ -1385,7 +1385,7 @@ qla8044_dump_reset_seq_hdr(struct scsi_qla_host *vha)
  *
  * Return Value - QLA_SUCCESS/QLA_FUNCTION_FAILED
  */
-int
+static int
 qla8044_reset_seq_checksum_test(struct scsi_qla_host *vha)
 {
 	uint32_t sum =  0;
@@ -1545,7 +1545,7 @@ qla8044_set_rst_ready(struct scsi_qla_host *vha)
  *
  * Note: IDC lock must be held upon entry
  **/
-void
+static void
 qla8044_need_reset_handler(struct scsi_qla_host *vha)
 {
 	uint32_t dev_state = 0, drv_state, drv_active;
@@ -1636,7 +1636,7 @@ qla8044_need_reset_handler(struct scsi_qla_host *vha)
 	}
 }
 
-void
+static void
 qla8044_set_drv_active(struct scsi_qla_host *vha)
 {
 	uint32_t drv_active;
@@ -1654,7 +1654,7 @@ qla8044_set_drv_active(struct scsi_qla_host *vha)
 	qla8044_wr_direct(vha, QLA8044_CRB_DRV_ACTIVE_INDEX, drv_active);
 }
 
-void
+static void
 qla8044_clear_idc_dontreset(struct scsi_qla_host *vha)
 {
 	uint32_t idc_ctrl;
@@ -1668,7 +1668,7 @@ qla8044_clear_idc_dontreset(struct scsi_qla_host *vha)
 	qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL, idc_ctrl);
 }
 
-int
+static int
 qla8044_set_idc_ver(struct scsi_qla_host *vha)
 {
 	int idc_ver;
@@ -1713,7 +1713,7 @@ exit_set_idc_ver:
 	return rval;
 }
 
-int
+static int
 qla8044_update_idc_reg(struct scsi_qla_host *vha)
 {
 	uint32_t drv_active;
@@ -1747,7 +1747,7 @@ exit_update_idc_reg:
  * qla8044_need_qsnt_handler - Code to start qsnt
  * @ha: pointer to adapter structure
  **/
-void
+static void
 qla8044_need_qsnt_handler(struct scsi_qla_host *vha)
 {
 	unsigned long qsnt_timeout;
@@ -1917,7 +1917,7 @@ exit_error:
  *
  * Note: The caller should not hold the idc lock.
  **/
-int
+static int
 qla8044_check_temp(struct scsi_qla_host *vha)
 {
 	uint32_t temp, temp_state, temp_val;
@@ -1957,7 +1957,7 @@ int qla8044_read_temperature(scsi_qla_host_t *vha)
  *
  * Context: Interrupt
  **/
-int
+static int
 qla8044_check_fw_alive(struct scsi_qla_host *vha)
 {
 	uint32_t fw_heartbeat_counter;
@@ -2582,7 +2582,7 @@ error:
 	return QLA_FUNCTION_FAILED;
 }
 
-void
+static void
 qla8044_minidump_process_rdmux2(struct scsi_qla_host *vha,
 	struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
 {
