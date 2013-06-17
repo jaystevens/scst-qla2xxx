@@ -5,6 +5,8 @@
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
 
+#include <linux/vmalloc.h>
+
 #include "qla_def.h"
 #include "qla_gbl.h"
 
