@@ -2111,7 +2111,7 @@ static struct isp_operations qla8044_isp_ops = {
 	.write_optrom		= qla8044_write_optrom_data,
 	.get_flash_version	= qla82xx_get_flash_version,
 	.start_scsi             = qla82xx_start_scsi,
-	.abort_isp		= qla82xx_abort_isp,
+	.abort_isp		= qla8044_abort_isp,
 	.iospace_config		= qla82xx_iospace_config,
 	.initialize_adapter	= qla2x00_initialize_adapter,
 

@@ -734,5 +734,6 @@ extern int qla8044_write_optrom_data(struct scsi_qla_host *, uint8_t *,
     uint32_t, uint32_t);
 extern irqreturn_t qla8044_intr_handler(int, void *);
 extern void qla82xx_mbx_completion(scsi_qla_host_t *, uint16_t);
+extern int qla8044_abort_isp(scsi_qla_host_t *);
 
 #endif /* _QLA_GBL_H */

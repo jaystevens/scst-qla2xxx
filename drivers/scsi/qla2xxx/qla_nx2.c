@@ -1555,6 +1555,14 @@ qla8044_need_reset_handler(struct scsi_qla_host *vha)
 	ql_log(ql_log_fatal, vha, 0xb0c2,
 	    "%s: Performing ISP error recovery\n", __func__);
 
+	if (vha->flags.online) {
+		qla8044_idc_unlock(ha);
+		qla2x00_abort_isp_cleanup(vha);
+		ha->isp_ops->get_flash_version(vha, vha->req->ring);
+		ha->isp_ops->nvram_config(vha);
+		qla8044_idc_lock(ha);
+	}
+
 	if (!ha->flags.nic_core_reset_owner) {
 		ql_dbg(ql_dbg_p3p, vha, 0xb0c3,
 		    "%s(%ld): reset acknowledged\n",
@@ -3468,5 +3476,89 @@ qla8044_intr_handler(int irq, void *dev_id)
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	return IRQ_HANDLED;
+}
+
+static int
+qla8044_idc_dontreset(struct qla_hw_data *ha)
+{
+	uint32_t idc_ctrl;
+
+	idc_ctrl = qla8044_rd_reg(ha, QLA8044_IDC_DRV_CTRL);
+	return idc_ctrl & DONTRESET_BIT0;
+}
+
+static void
+qla8044_clear_rst_ready(scsi_qla_host_t *vha)
+{
+	uint32_t drv_state;
+
+	drv_state = qla8044_rd_direct(vha, QLA8044_CRB_DRV_STATE_INDEX);
+
+	/*
+	 * For ISP8044, drv_active register has 1 bit per function,
+	 * shift 1 by func_num to set a bit for the function.
+	 * For ISP82xx, drv_active has 4 bits per function
+	 */
+	drv_state &= ~(1 << vha->hw->portnum);
+
+	ql_dbg(ql_dbg_p3p, vha, 0xb143,
+	    "drv_state: 0x%08x\n", drv_state);
+	qla8044_wr_direct(vha, QLA8044_CRB_DRV_STATE_INDEX, drv_state);
+}
+
+int
+qla8044_abort_isp(scsi_qla_host_t *vha)
+{
+	int rval;
+	uint32_t dev_state;
+	struct qla_hw_data *ha = vha->hw;
+
+	qla8044_idc_lock(ha);
+	dev_state = qla8044_rd_direct(vha, QLA8044_CRB_DEV_STATE_INDEX);
+
+	if (ql2xdontresethba)
+		qla8044_set_idc_dontreset(vha);
+
+	/* If device_state is NEED_RESET, go ahead with
+	 * Reset,irrespective of ql2xdontresethba. This is to allow a
+	 * non-reset-owner to force a reset. Non-reset-owner sets
+	 * the IDC_CTRL BIT0 to prevent Reset-owner from doing a Reset
+	 * and then forces a Reset by setting device_state to
+	 * NEED_RESET. */
+	if (dev_state == QLA8XXX_DEV_READY) {
+		/* If IDC_CTRL DONTRESETHBA_BIT0 is set don't do reset
+		 * recovery */
+		if (qla8044_idc_dontreset(ha) == DONTRESET_BIT0) {
+			ql_dbg(ql_dbg_p3p, vha, 0xb144,
+			    "Reset recovery disabled\n");
+			rval = QLA_FUNCTION_FAILED;
+			goto exit_isp_reset;
+		}
+
+		ql_dbg(ql_dbg_p3p, vha, 0xb145,
+		    "HW State: NEED RESET\n");
+		qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
+		    QLA8XXX_DEV_NEED_RESET);
+	}
+
+	/* For ISP8044, Reset owner is NIC, iSCSI or FCOE based on priority
+	 * and which drivers are present. Unlike ISP82XX, the function setting
+	 * NEED_RESET, may not be the Reset owner. */
+	qla83xx_reset_ownership(vha);
+
+	qla8044_idc_unlock(ha);
+	rval = qla8044_device_state_handler(vha);
+	qla8044_idc_lock(ha);
+	qla8044_clear_rst_ready(vha);
+
+exit_isp_reset:
+	qla8044_idc_unlock(ha);
+	if (rval == QLA_SUCCESS) {
+		ha->flags.isp82xx_fw_hung = 0;
+		ha->flags.nic_core_reset_hdlr_active = 0;
+		rval = qla82xx_restart_isp(vha);
+	}
+
+	return rval;
 }
 
