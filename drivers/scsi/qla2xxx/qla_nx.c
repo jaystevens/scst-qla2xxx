@@ -3450,15 +3450,15 @@ qla82xx_set_reset_owner(scsi_qla_host_t *vha)
 	if (dev_state == QLA8XXX_DEV_READY) {
 		ql_log(ql_log_info, vha, 0xb02f,
 		    "HW State: NEED RESET\n");
-		if (IS_QLA82XX(ha))
+		if (IS_QLA82XX(ha)) {
 			qla82xx_wr_32(ha, QLA82XX_CRB_DEV_STATE,
 			    QLA8XXX_DEV_NEED_RESET);
-		else if (IS_QLA8044(ha))
+			ha->flags.nic_core_reset_owner = 1;
+			ql_dbg(ql_dbg_p3p, vha, 0xb030,
+			    "reset_owner is 0x%x\n", ha->portnum);
+		} else if (IS_QLA8044(ha))
 			qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
 			    QLA8XXX_DEV_NEED_RESET);
-		ha->flags.nic_core_reset_owner = 1;
-		ql_dbg(ql_dbg_p3p, vha, 0xb030,
-		    "reset_owner is 0x%x\n", ha->portnum);
 	} else
 		ql_log(ql_log_info, vha, 0xb031,
 		    "Device state is 0x%x = %s.\n",

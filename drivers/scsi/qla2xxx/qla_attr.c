@@ -600,7 +600,6 @@ qla2x00_sysfs_write_reset(struct kobject *kobj,
 		    "Issuing ISP reset.\n");
 
 		scsi_block_requests(vha->host);
-		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 		if (IS_QLA82XX(ha)) {
 			ha->flags.isp82xx_no_md_cap = 1;
 			qla82xx_idc_lock(ha);
@@ -611,8 +610,10 @@ qla2x00_sysfs_write_reset(struct kobject *kobj,
 			qla8044_idc_lock(ha);
 			qla82xx_set_reset_owner(vha);
 			qla8044_idc_unlock(ha);
+		} else {
+			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+			qla2xxx_wake_dpc(vha);
 		}
-		qla2xxx_wake_dpc(vha);
 		qla2x00_wait_for_chip_reset(vha);
 		scsi_unblock_requests(vha->host);
 		break;
