@@ -1629,6 +1629,8 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		memcpy(&vha->hw->mr.fru_serial_num, pinfo->fru_serial_num,
 		    sizeof(vha->hw->mr.fru_serial_num));
 		vha->hw->mr.critical_temperature = pinfo->nominal_temp_value;
+		ha->mr.extended_io_enabled = (pinfo->enabled_capabilities &
+		    QLAFX00_EXTENDED_IO_EN_MASK) != 0;
 	} else if (fx_type == FXDISC_GET_PORT_INFO) {
 		port_info_data_t *pinfo =
 		    (port_info_data_t *) fdisc->u.fxiocb.rsp_addr;
@@ -2915,9 +2917,6 @@ void qlafx00_process_response_queue(struct scsi_qla_host *vha,
 {
 	struct sts_entry_fx00 *pkt;
 	response_t *lptr;
-
-	if (!vha->flags.online)
-		return;
 
 	while (RD_REG_DWORD(&(rsp->ring_ptr->signature)) != RESPONSE_PROCESSED) {
 		lptr = rsp->ring_ptr;
