@@ -2980,65 +2980,37 @@ qla8044_poll_flash_status_reg(struct scsi_qla_host *vha)
 }
 
 static int
-qla8044_read_flash_status_reg(struct scsi_qla_host *vha, int *flash_status)
-{
-	int ret_val = QLA_SUCCESS;
-
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR, 0xFD0005);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb121,
-		    "%s: Failed to write to FLASH_ADDR.\n", __func__);
-		goto exit_func;
-	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL, 0x3F);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb122,
-		    "%s: Failed to write to FLASH_CONTROL.\n", __func__);
-		goto exit_func;
-	}
-	ret_val = qla8044_poll_flash_status_reg(vha);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb123,
-		    "%s: Failed.\n", __func__);
-		goto exit_func;
-	}
-	ret_val = qla8044_rd_reg_indirect(vha, QLA8044_FLASH_RDDATA,
-	    flash_status);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb124,
-		    "%s: Failed to read FLASH_STATUE reg.\n", __func__);
-		goto exit_func;
-	}
-	*flash_status &= 0xFF;
-
-exit_func:
-	return ret_val;
-}
-
-static int
 qla8044_write_flash_status_reg(struct scsi_qla_host *vha,
     uint32_t data)
 {
 	int ret_val = QLA_SUCCESS;
+	uint32_t cmd;
 
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR, 0xFD0101);
+	cmd = vha->hw->fdt_wrt_sts_reg_cmd;
+
+	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR,
+	    QLA8044_FLASH_STATUS_WRITE_DEF_SIG | cmd);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb125,
 		    "%s: Failed to write to FLASH_ADDR.\n", __func__);
 		goto exit_func;
 	}
+
 	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_WRDATA, data);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb126,
 		    "%s: Failed to write to FLASH_WRDATA.\n", __func__);
 		goto exit_func;
 	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL, 0x5);
+
+	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL,
+	    QLA8044_FLASH_SECOND_ERASE_MS_VAL);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb127,
 		    "%s: Failed to write to FLASH_CONTROL.\n", __func__);
 		goto exit_func;
 	}
+
 	ret_val = qla8044_poll_flash_status_reg(vha);
 	if (ret_val)
 		ql_log(ql_log_warn, vha, 0xb128,
@@ -3048,54 +3020,52 @@ exit_func:
 	return ret_val;
 }
 
+/*
+ * This function assumes that the flash lock is held.
+ */
+int
+qla8044_unprotect_flash(scsi_qla_host_t *vha)
+{
+	int ret_val;
+	struct qla_hw_data *ha = vha->hw;
+
+	ret_val = qla8044_write_flash_status_reg(vha, ha->fdt_wrt_enable);
+	if (ret_val)
+		ql_log(ql_log_warn, vha, 0xb139,
+		    "%s: Write flash status failed.\n", __func__);
+
+	return ret_val;
+}
+
+/*
+ * This function assumes that the flash lock is held.
+ */
+int
+qla8044_protect_flash(scsi_qla_host_t *vha)
+{
+	int ret_val;
+	struct qla_hw_data *ha = vha->hw;
+
+	ret_val = qla8044_write_flash_status_reg(vha, ha->fdt_wrt_disable);
+	if (ret_val)
+		ql_log(ql_log_warn, vha, 0xb13b,
+		    "%s: Write flash status failed.\n", __func__);
+
+	return ret_val;
+}
+
+
 static int
 qla8044_erase_flash_sector(struct scsi_qla_host *vha,
     uint32_t sector_start_addr)
 {
 	uint32_t reversed_addr;
-	int flash_status, ret_val = QLA_SUCCESS;
+	int ret_val = QLA_SUCCESS;
 
-	if (qla8044_flash_lock(vha)) {
-		ret_val = QLA_FUNCTION_FAILED;
-		goto exit_func;
-	}
-
-	/* save status register */
-	ret_val = qla8044_read_flash_status_reg(vha, &flash_status);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb129,
-		    "%s: Read flash status failed.\n", __func__);
-		goto exit_flash_unlock;
-	}
-	ret_val = qla8044_write_flash_status_reg(vha, 0);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb12a,
-		    "%s: Write flash status failed.\n", __func__);
-		goto exit_flash_unlock;
-	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_WRDATA, 0x0);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb12b,
-		    "%s: Failed to write to FLASH_WRDATA.\n", __func__);
-		goto exit_flash_unlock;
-	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR, 0xFD0101);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb12c,
-		    "%s: Failed to write to FLASH_ADDR.\n", __func__);
-		goto exit_flash_unlock;
-	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL, 0x5);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb12d,
-		    "%s: Failed to write to FLASH_CONTROL.\n", __func__);
-		goto exit_flash_unlock;
-	}
 	ret_val = qla8044_poll_flash_status_reg(vha);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb12e,
 		    "%s: Poll flash status after erase failed..\n", __func__);
-		goto exit_flash_unlock;
 	}
 
 	reversed_addr = (((sector_start_addr & 0xFF) << 16) |
@@ -3107,36 +3077,26 @@ qla8044_erase_flash_sector(struct scsi_qla_host *vha,
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb12f,
 		    "%s: Failed to write to FLASH_WRDATA.\n", __func__);
-		goto exit_flash_unlock;
 	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR, 0xFD03D8);
+	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR,
+	   QLA8044_FLASH_ERASE_SIG | vha->hw->fdt_erase_cmd);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb130,
 		    "%s: Failed to write to FLASH_ADDR.\n", __func__);
-		goto exit_flash_unlock;
 	}
-	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL, 0x3D);
+	ret_val = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL,
+	    QLA8044_FLASH_LAST_ERASE_MS_VAL);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb131,
 		    "%s: Failed write to FLASH_CONTROL.\n", __func__);
-		goto exit_flash_unlock;
 	}
 	ret_val = qla8044_poll_flash_status_reg(vha);
 	if (ret_val) {
 		ql_log(ql_log_warn, vha, 0xb132,
 		    "%s: Poll flash status failed.\n", __func__);
-		goto exit_flash_unlock;
 	}
-	/* restore status register */
-	ret_val = qla8044_write_flash_status_reg(vha, flash_status);
-	if (ret_val)
-		ql_log(ql_log_warn, vha, 0xb133,
-		    "%s: Write to restore flash status failed.\n", __func__);
 
-exit_flash_unlock:
-	qla8044_flash_unlock(vha);
 
-exit_func:
 	return ret_val;
 }
 
@@ -3186,140 +3146,97 @@ exit_func:
 	return ret_val;
 }
 
-/*
- * Reset all block protect bits
- */
-int
-qla8044_unprotect_flash(scsi_qla_host_t *vha)
+static int
+qla8044_write_flash_buffer_mode(scsi_qla_host_t *vha, uint32_t *dwptr,
+    uint32_t faddr, uint32_t dwords)
 {
-	int flash_status, ret_val;
-	struct qla_hw_data *ha = vha->hw;
+	int ret = QLA_FUNCTION_FAILED;
+	uint32_t spi_val;
 
-	if (qla8044_flash_lock(vha)) {
-		ret_val = QLA_FUNCTION_FAILED;
-		return ret_val;
-	}
-	ret_val = qla8044_read_flash_status_reg(vha, &flash_status);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb138,
-		    "%s: Read flash status failed.\n", __func__);
-		return ret_val;
-	}
-	ret_val = qla8044_write_flash_status_reg(vha, ha->fdt_wrt_enable);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb139,
-		    "%s: Write flash status failed.\n", __func__);
-		return ret_val;
+	if (dwords < QLA8044_MIN_OPTROM_BURST_DWORDS ||
+	    dwords > QLA8044_MAX_OPTROM_BURST_DWORDS) {
+		ql_dbg(ql_dbg_user, vha, 0xb123,
+		    "Got unsupported dwords = 0x%x.\n",
+		    dwords);
+		return QLA_FUNCTION_FAILED;
 	}
 
-	qla8044_flash_unlock(vha);
-	return ret_val;
+	qla8044_rd_reg_indirect(vha, QLA8044_FLASH_SPI_CONTROL, &spi_val);
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_SPI_CONTROL,
+	    spi_val | QLA8044_FLASH_SPI_CTL);
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR,
+	    QLA8044_FLASH_FIRST_TEMP_VAL);
+
+	/* First DWORD write to FLASH_WRDATA */
+	ret = qla8044_wr_reg_indirect(vha, QLA8044_FLASH_WRDATA,
+	    *dwptr++);
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL,
+	    QLA8044_FLASH_FIRST_MS_PATTERN);
+
+	ret = qla8044_poll_flash_status_reg(vha);
+	if (ret) {
+		ql_log(ql_log_warn, vha, 0xb124,
+		    "%s: Failed.\n", __func__);
+		goto exit_func;
+	}
+
+	dwords--;
+
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR,
+	    QLA8044_FLASH_SECOND_TEMP_VAL);
+
+
+	/* Second to N-1 DWORDS writes */
+	while (dwords != 1) {
+		qla8044_wr_reg_indirect(vha, QLA8044_FLASH_WRDATA, *dwptr++);
+		qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL,
+		    QLA8044_FLASH_SECOND_MS_PATTERN);
+		ret = qla8044_poll_flash_status_reg(vha);
+		if (ret) {
+			ql_log(ql_log_warn, vha, 0xb129,
+			    "%s: Failed.\n", __func__);
+			goto exit_func;
+		}
+		dwords--;
+	}
+
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_ADDR,
+	    QLA8044_FLASH_FIRST_TEMP_VAL | (faddr >> 2));
+
+	/* Last DWORD write */
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_WRDATA, *dwptr++);
+	qla8044_wr_reg_indirect(vha, QLA8044_FLASH_CONTROL,
+	    QLA8044_FLASH_LAST_MS_PATTERN);
+	ret = qla8044_poll_flash_status_reg(vha);
+	if (ret) {
+		ql_log(ql_log_warn, vha, 0xb12a,
+		    "%s: Failed.\n", __func__);
+		goto exit_func;
+	}
+	qla8044_rd_reg_indirect(vha, QLA8044_FLASH_SPI_STATUS, &spi_val);
+
+	if ((spi_val & QLA8044_FLASH_SPI_CTL) == QLA8044_FLASH_SPI_CTL) {
+		ql_log(ql_log_warn, vha, 0xb12b,
+		    "%s: Failed.\n", __func__);
+		spi_val = 0;
+		/* Operation failed, clear error bit. */
+		qla8044_rd_reg_indirect(vha, QLA8044_FLASH_SPI_CONTROL,
+		    &spi_val);
+		qla8044_wr_reg_indirect(vha, QLA8044_FLASH_SPI_CONTROL,
+		    spi_val | QLA8044_FLASH_SPI_CTL);
+	}
+exit_func:
+	return ret;
 }
-
-/*
- * Reset all block protect bits
- */
-int
-qla8044_protect_flash(scsi_qla_host_t *vha)
-{
-	int flash_status, ret_val;
-	struct qla_hw_data *ha = vha->hw;
-
-	if (qla8044_flash_lock(vha)) {
-		ret_val = QLA_FUNCTION_FAILED;
-		return ret_val;
-	}
-	ret_val = qla8044_read_flash_status_reg(vha, &flash_status);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb13a,
-		    "%s: Read flash status failed.\n", __func__);
-		return ret_val;
-	}
-	ret_val = qla8044_write_flash_status_reg(vha, ha->fdt_wrt_disable);
-	if (ret_val) {
-		ql_log(ql_log_warn, vha, 0xb13b,
-		    "%s: Write flash status failed.\n", __func__);
-		return ret_val;
-	}
-	qla8044_flash_unlock(vha);
-	return ret_val;
-}
-
-#define OPTROM_BURST_SIZE	0x1000
-#define OPTROM_BURST_DWORDS	(OPTROM_BURST_SIZE / 4)
 
 static int
-qla8044_write_flash_data(scsi_qla_host_t *vha, uint32_t *dwptr, uint32_t faddr,
-    uint32_t dwords)
+qla8044_write_flash_dword_mode(scsi_qla_host_t *vha, uint32_t *dwptr,
+    uint32_t faddr, uint32_t dwords)
 {
 	int ret = QLA_FUNCTION_FAILED;
 	uint32_t liter;
-	uint32_t sec_mask, rest_addr;
-	dma_addr_t optrom_dma;
-	void *optrom = NULL;
-	int page_mode = 0;
-	struct qla_hw_data *ha = vha->hw;
-
-	/* Prepare burst-capable write on supported ISPs. */
-	if (page_mode && !(faddr & 0xfff) &&
-	    dwords > OPTROM_BURST_DWORDS) {
-		optrom = dma_alloc_coherent(&ha->pdev->dev, OPTROM_BURST_SIZE,
-		    &optrom_dma, GFP_KERNEL);
-		if (!optrom) {
-			ql_log(ql_log_warn, vha, 0xb13c,
-			    "Unable to allocate memory for optrom burst write "
-			    "(%x KB).\n", OPTROM_BURST_SIZE / 1024);
-		}
-	}
-
-	rest_addr = ha->fdt_block_size - 1;
-	sec_mask = ~rest_addr;
-
-	ret = qla8044_unprotect_flash(vha);
-	if (ret) {
-		ql_log(ql_log_warn, vha, 0xb13d,
-		    "%s: Unable to unprotect flash for update.\n", __func__);
-		goto write_done;
-	}
 
 	for (liter = 0; liter < dwords; liter++, faddr += 4, dwptr++) {
-		/* Are we at the beginning of a sector? */
-		if ((faddr & rest_addr) == 0) {
-			ret = qla8044_erase_flash_sector(vha, faddr);
-			if (ret) {
-				ql_dbg(ql_dbg_p3p, vha, 0xb13e,
-				    "Unable to erase sector: "
-				    "address=%x.\n", faddr);
-				break;
-			}
-		}
-
-		/* Go with burst-write. */
-		if (optrom && (liter + OPTROM_BURST_DWORDS) <= dwords) {
-			/* Copy data to DMA'ble buffer. */
-			memcpy(optrom, dwptr, OPTROM_BURST_SIZE);
-
-			ret = qla2x00_load_ram(vha, optrom_dma,
-			    (ha->flash_data_off | faddr),
-			    OPTROM_BURST_DWORDS);
-			if (ret) {
-				ql_log(ql_log_warn, vha, 0xb13f,
-				    "Unable to burst-write optrom segment "
-				    "(%x/%x/%llx).\n", ret,
-				    (ha->flash_data_off | faddr),
-				    (unsigned long long)optrom_dma);
-				ql_log(ql_log_warn, vha, 0xb140,
-				    "Reverting to slow-write.\n");
-				dma_free_coherent(&ha->pdev->dev,
-				    OPTROM_BURST_SIZE, optrom, optrom_dma);
-				optrom = NULL;
-			} else {
-				liter += OPTROM_BURST_DWORDS - 1;
-				faddr += OPTROM_BURST_DWORDS - 1;
-				dwptr += OPTROM_BURST_DWORDS - 1;
-				continue;
-			}
-		}
 		ret = qla8044_flash_write_u32(vha, faddr, dwptr);
 		if (ret) {
 			ql_dbg(ql_dbg_p3p, vha, 0xb141,
@@ -3329,15 +3246,6 @@ qla8044_write_flash_data(scsi_qla_host_t *vha, uint32_t *dwptr, uint32_t faddr,
 		}
 	}
 
-	ret = qla8044_protect_flash(vha);
-	if (ret)
-		ql_log(ql_log_warn, vha, 0xb142,
-		    "Unable to protect flash after update.\n");
-write_done:
-	if (optrom)
-		dma_free_coherent(&ha->pdev->dev,
-		    OPTROM_BURST_SIZE, optrom, optrom_dma);
-
 	return ret;
 }
 
@@ -3345,22 +3253,75 @@ int
 qla8044_write_optrom_data(struct scsi_qla_host *vha, uint8_t *buf,
     uint32_t offset, uint32_t length)
 {
-	int rval;
+	int rval = QLA_FUNCTION_FAILED, i, burst_iter_count;
+	int dword_count, erase_sec_count;
+	uint32_t erase_offset;
+	uint8_t *p_cache, *p_src;
+
+	erase_offset = offset;
+
+	p_cache = kcalloc(length, sizeof(uint8_t), GFP_KERNEL);
+	if (!p_cache)
+		return QLA_FUNCTION_FAILED;
+
+	memcpy(p_cache, buf, length);
+	p_src = p_cache;
+	dword_count = length / sizeof(uint32_t);
+	/* Since the offset and legth are sector aligned, it will be always
+	 * multiple of burst_iter_count (64)
+	 */
+	burst_iter_count = dword_count / QLA8044_MAX_OPTROM_BURST_DWORDS;
+	erase_sec_count = length / QLA8044_SECTOR_SIZE;
 
 	/* Suspend HBA. */
 	scsi_block_requests(vha->host);
+	/* Lock and enable write for whole operation. */
+	qla8044_flash_lock(vha);
+	qla8044_unprotect_flash(vha);
 
-	/* Go with write. */
-	rval = qla8044_write_flash_data(vha, (uint32_t *)buf, offset,
-	    length >> 2);
+	/* Erasing the sectors */
+	for (i = 0; i < erase_sec_count; i++) {
+		rval = qla8044_erase_flash_sector(vha, erase_offset);
+		ql_dbg(ql_dbg_user, vha, 0xb138,
+		    "Done erase of sector=0x%x.\n",
+		    erase_offset);
+		if (rval) {
+			ql_log(ql_log_warn, vha, 0xb121,
+			    "Failed to erase the sector having address: "
+			    "0x%x.\n", erase_offset);
+			goto out;
+		}
+		erase_offset += QLA8044_SECTOR_SIZE;
+	}
+	ql_dbg(ql_dbg_user, vha, 0xb139,
+	    "Got write for addr = 0x%x length=0x%x.\n",
+	    offset, length);
 
+	for (i = 0; i < burst_iter_count; i++) {
+
+		/* Go with write. */
+		rval = qla8044_write_flash_buffer_mode(vha, (uint32_t *)p_src,
+		    offset, QLA8044_MAX_OPTROM_BURST_DWORDS);
+		if (rval) {
+			/* Buffer Mode failed skip to dword mode */
+			ql_log(ql_log_warn, vha, 0xb122,
+			    "Failed to write flash in buffer mode, "
+			    "Reverting to slow-write.\n");
+			rval = qla8044_write_flash_dword_mode(vha,
+			    (uint32_t *)p_src, offset,
+			    QLA8044_MAX_OPTROM_BURST_DWORDS);
+		}
+		p_src +=  sizeof(uint32_t) * QLA8044_MAX_OPTROM_BURST_DWORDS;
+		offset += sizeof(uint32_t) * QLA8044_MAX_OPTROM_BURST_DWORDS;
+	}
+	ql_dbg(ql_dbg_user, vha, 0xb133,
+	    "Done writing.\n");
+
+out:
+	qla8044_protect_flash(vha);
+	qla8044_flash_unlock(vha);
 	scsi_unblock_requests(vha->host);
-
-	/* Convert return ISP82xx to generic */
-	if (rval)
-		rval = QLA_FUNCTION_FAILED;
-	else
-		rval = QLA_SUCCESS;
+	kfree(p_cache);
 
 	return rval;
 }

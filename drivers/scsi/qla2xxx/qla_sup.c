@@ -891,7 +891,12 @@ qla2xxx_get_fdt_info(scsi_qla_host_t *vha)
 	fid = le16_to_cpu(fdt->id);
 	ha->fdt_wrt_disable = fdt->wrt_disable_bits;
 	ha->fdt_wrt_enable = fdt->wrt_enable_bits;
-	ha->fdt_erase_cmd = flash_conf_addr(ha, 0x0300 | fdt->erase_cmd);
+	ha->fdt_wrt_sts_reg_cmd = fdt->wrt_sts_reg_cmd;
+	if (IS_QLA8044(ha))
+		ha->fdt_erase_cmd = fdt->erase_cmd;
+	else
+		ha->fdt_erase_cmd =
+		    flash_conf_addr(ha, 0x0300 | fdt->erase_cmd);
 	ha->fdt_block_size = le32_to_cpu(fdt->block_size);
 	if (fdt->unprotect_sec_cmd) {
 		ha->fdt_unprotect_sec_cmd = flash_conf_addr(ha, 0x0300 |

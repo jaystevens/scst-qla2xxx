@@ -3149,6 +3149,7 @@ struct qla_hw_data {
 	uint32_t	fdt_block_size;
 	uint32_t	fdt_unprotect_sec_cmd;
 	uint32_t	fdt_protect_sec_cmd;
+	uint32_t	fdt_wrt_sts_reg_cmd;
 
 	uint32_t        flt_region_flt;
 	uint32_t        flt_region_fdt;
