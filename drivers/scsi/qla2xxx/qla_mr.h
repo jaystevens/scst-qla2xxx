@@ -380,7 +380,7 @@ typedef struct config_info_data config_info_data_t;
 #define FXDISC_GET_TGT_NODE_LIST	0x81
 #define FXDISC_REG_HOST_INFO		0x99
 
-#define QLAFX00_HBA_ICNTRL_REG		0x21B08
+#define QLAFX00_HBA_ICNTRL_REG		0x20B08
 #define QLAFX00_ICR_ENB_MASK            0x80000000
 #define QLAFX00_ICR_DIS_MASK            0x7fffffff
 #define QLAFX00_HST_RST_REG		0x18264
