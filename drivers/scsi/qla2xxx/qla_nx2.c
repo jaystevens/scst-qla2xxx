@@ -2309,7 +2309,7 @@ qla8044_minidump_process_rdmem(struct scsi_qla_host *vha,
 	}
 	write_unlock_irqrestore(&ha->hw_lock, flags);
 
-	ql_log(ql_log_info, vha, 0xb0f4,
+	ql_dbg(ql_dbg_p3p, vha, 0xb0f4,
 	    "Leaving fn: %s datacount: 0x%x\n",
 	     __func__, (loop_cnt * 16));
 
@@ -2330,7 +2330,7 @@ qla8044_minidump_process_rdrom(struct scsi_qla_host *vha,
 	fl_addr = le32_to_cpu(rom_hdr->read_addr);
 	u32_count = le32_to_cpu(rom_hdr->read_data_size)/sizeof(uint32_t);
 
-	ql_log(ql_log_info, vha, 0xb0f5, "[%s]: fl_addr: 0x%x, count: 0x%x\n",
+	ql_dbg(ql_dbg_p3p, vha, 0xb0f5, "[%s]: fl_addr: 0x%x, count: 0x%x\n",
 	    __func__, fl_addr, u32_count);
 
 	rval = qla8044_lockless_flash_read_u32(vha, fl_addr,
@@ -2809,7 +2809,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 			goto skip_nxt_entry;
 		}
 
-		ql_log(ql_log_info, vha, 0xb104,
+		ql_dbg(ql_dbg_p3p, vha, 0xb104,
 		    "Data collected: [0x%x], Dump size left:[0x%x]\n",
 		    data_collected,
 		    (ha->md_dump_size - data_collected));
