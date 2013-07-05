@@ -294,7 +294,7 @@ struct qla8044_minidump_entry_hdr {
 		uint8_t driver_code;
 		uint8_t driver_flags;
 	} d_ctrl;
-};
+}__attribute__((packed));
 
 /*  Read CRB entry header */
 struct qla8044_minidump_entry_crb {
@@ -318,7 +318,7 @@ struct qla8044_minidump_entry_crb {
 	uint32_t value_1;
 	uint32_t value_2;
 	uint32_t value_3;
-};
+}__attribute__((packed));
 
 struct qla8044_minidump_entry_cache {
 	struct qla8044_minidump_entry_hdr h;
@@ -341,7 +341,7 @@ struct qla8044_minidump_entry_cache {
 		uint8_t read_addr_cnt;
 		uint16_t rsvd_1;
 	} read_ctrl;
-};
+}__attribute__((packed));
 
 /* Read OCM */
 struct qla8044_minidump_entry_rdocm {
@@ -354,7 +354,7 @@ struct qla8044_minidump_entry_rdocm {
 	uint32_t rsvd_3;
 	uint32_t read_addr;
 	uint32_t read_addr_stride;
-};
+}__attribute__((packed));
 
 /* Read Memory */
 struct qla8044_minidump_entry_rdmem {
@@ -364,13 +364,25 @@ struct qla8044_minidump_entry_rdmem {
 	uint32_t read_data_size;
 };
 
+/* Read Memory: For Pex-DMA */
+struct qla8044_minidump_entry_rdmem_pex_dma {
+	struct qla8044_minidump_entry_hdr h;
+	uint32_t desc_card_addr;
+	uint16_t dma_desc_cmd;
+	uint8_t rsvd[2];
+	uint32_t start_dma_cmd;
+	uint8_t rsvd2[12];
+	uint32_t read_addr;
+	uint32_t read_data_size;
+}__attribute__((packed));
+
 /* Read ROM */
 struct qla8044_minidump_entry_rdrom {
 	struct qla8044_minidump_entry_hdr h;
 	uint32_t rsvd[6];
 	uint32_t read_addr;
 	uint32_t read_data_size;
-};
+}__attribute__((packed));
 
 /* Mux entry */
 struct qla8044_minidump_entry_mux {
@@ -383,7 +395,7 @@ struct qla8044_minidump_entry_mux {
 	uint32_t select_value_stride;
 	uint32_t read_addr;
 	uint32_t rsvd_1;
-};
+}__attribute__((packed));
 
 /* Queue entry */
 struct qla8044_minidump_entry_queue {
@@ -403,7 +415,7 @@ struct qla8044_minidump_entry_queue {
 		uint8_t read_addr_cnt;
 		uint16_t rsvd_3;
 	} rd_strd;
-};
+}__attribute__((packed));
 
 /* POLLRD Entry */
 typedef struct qla8044_minidump_entry_pollrd {
@@ -417,7 +429,7 @@ typedef struct qla8044_minidump_entry_pollrd {
 	uint32_t poll_mask;
 	uint32_t data_size;
 	uint32_t rsvd_1;
-} qla8044_minidump_entry_pollrd_t;
+}__attribute__((packed)) qla8044_minidump_entry_pollrd_t;
 
 /* RDMUX2 Entry */
 typedef struct qla8044_minidump_entry_rdmux2 {
@@ -432,7 +444,7 @@ typedef struct qla8044_minidump_entry_rdmux2 {
 	uint8_t select_value_stride;
 	uint8_t data_size;
 	uint8_t rsvd[2];
-} qla8044_minidump_entry_rdmux2_t;
+}__attribute__((packed)) qla8044_minidump_entry_rdmux2_t;
 
 /* POLLRDMWR Entry */
 typedef struct qla8044_minidump_entry_pollrdmwr {
@@ -445,7 +457,7 @@ typedef struct qla8044_minidump_entry_pollrdmwr {
 	uint32_t poll_mask;
 	uint32_t modify_mask;
 	uint32_t data_size;
-} qla8044_minidump_entry_pollrdmwr_t;
+}__attribute__((packed)) qla8044_minidump_entry_pollrdmwr_t;
 
 /* IDC additional information */
 struct qla8044_idc_information {
@@ -453,7 +465,7 @@ struct qla8044_idc_information {
 	uint32_t info1; /* IDC additional info */
 	uint32_t info2; /* IDC additional info */
 	uint32_t info3; /* IDC additional info */
-};
+}__attribute__((packed));
 
 enum qla_regs {
 	QLA8044_PEG_HALT_STATUS1_INDEX = 0,
@@ -470,7 +482,7 @@ enum qla_regs {
 	QLA8044_FW_VERSION_SUB_INDEX,
 	QLA8044_CRB_CMDPEG_STATE_INDEX,
 	QLA8044_CRB_TEMP_STATE_INDEX,
-};
+}__attribute__((packed));
 
 #define CRB_REG_INDEX_MAX	14
 #define CRB_CMDPEG_CHECK_RETRY_COUNT    60
@@ -524,4 +536,16 @@ struct qla8044_minidump_template_hdr {
 	uint32_t capture_size_array[QLA8044_DBG_CAP_SIZE_ARRAY_LEN];
 	uint32_t ocm_window_reg[QLA8044_DBG_OCM_WNDREG_ARRAY_LEN];
 };
+
+struct qla8044_pex_dma_descriptor {
+	struct {
+		uint32_t read_data_size; /* 0-23: size, 24-31: rsvd */
+		uint8_t rsvd[2];
+ 		uint16_t dma_desc_cmd;
+	} cmd;
+	uint64_t src_addr;
+	uint64_t dma_bus_addr; /*0-3: desc-cmd, 4-7: pci-func, 8-15: desc-cmd*/
+ 	uint8_t rsvd[24];
+} __attribute__((packed));
+
 #endif

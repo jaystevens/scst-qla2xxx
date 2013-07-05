@@ -2700,6 +2700,194 @@ error:
 	return QLA_FUNCTION_FAILED;
 }
 
+#define ISP8044_PEX_DMA_ENGINE_INDEX 		8
+#define ISP8044_PEX_DMA_BASE_ADDRESS 		0x77320000
+#define ISP8044_PEX_DMA_NUM_OFFSET			0x10000
+#define ISP8044_PEX_DMA_CMD_ADDR_LOW 		0x0
+#define ISP8044_PEX_DMA_CMD_ADDR_HIGH 		0x04
+#define ISP8044_PEX_DMA_CMD_STS_AND_CNTRL	0x08
+
+#define ISP8044_PEX_DMA_READ_SIZE	(16 * 1024)
+#define ISP8044_PEX_DMA_MAX_WAIT	(100 * 100) /* Max wait of 100 msecs */
+
+static int
+qla8044_check_dma_engine_state(struct scsi_qla_host *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+	int rval = QLA_SUCCESS;
+	uint32_t dma_eng_num = 0, cmd_sts_and_cntrl = 0;
+	uint64_t dma_base_addr = 0;
+	struct qla8044_minidump_template_hdr *tmplt_hdr = NULL;
+
+	tmplt_hdr = ha->md_tmplt_hdr;
+	dma_eng_num =
+	    tmplt_hdr->saved_state_array[ISP8044_PEX_DMA_ENGINE_INDEX];
+	dma_base_addr = ISP8044_PEX_DMA_BASE_ADDRESS +
+		(dma_eng_num * ISP8044_PEX_DMA_NUM_OFFSET);
+
+	/* Read the pex-dma's command-status-and-control register. */
+	rval = qla8044_rd_reg_indirect(vha,
+	    (dma_base_addr + ISP8044_PEX_DMA_CMD_STS_AND_CNTRL),
+	    &cmd_sts_and_cntrl);
+	if (rval)
+		return QLA_FUNCTION_FAILED;
+
+	/* Check if requested pex-dma engine is available. */
+	if (cmd_sts_and_cntrl & BIT_31)
+		return QLA_SUCCESS;
+
+	return QLA_FUNCTION_FAILED;
+}
+
+static int
+qla8044_start_pex_dma(struct scsi_qla_host *vha,
+	struct qla8044_minidump_entry_rdmem_pex_dma *m_hdr)
+{
+	struct qla_hw_data *ha = vha->hw;
+	int rval = QLA_SUCCESS, wait = 0;
+	uint32_t dma_eng_num = 0, cmd_sts_and_cntrl = 0;
+	uint64_t dma_base_addr = 0;
+	struct qla8044_minidump_template_hdr *tmplt_hdr = NULL;
+
+	tmplt_hdr = ha->md_tmplt_hdr;
+	dma_eng_num =
+	    tmplt_hdr->saved_state_array[ISP8044_PEX_DMA_ENGINE_INDEX];
+	dma_base_addr = ISP8044_PEX_DMA_BASE_ADDRESS +
+		(dma_eng_num * ISP8044_PEX_DMA_NUM_OFFSET);
+
+	rval = qla8044_wr_reg_indirect(vha,
+	    dma_base_addr + ISP8044_PEX_DMA_CMD_ADDR_LOW,
+	    m_hdr->desc_card_addr);
+	if (rval)
+		goto error_exit;
+
+	rval = qla8044_wr_reg_indirect(vha,
+	    dma_base_addr + ISP8044_PEX_DMA_CMD_ADDR_HIGH, 0);
+	if (rval)
+		goto error_exit;
+
+	rval = qla8044_wr_reg_indirect(vha,
+	    dma_base_addr + ISP8044_PEX_DMA_CMD_STS_AND_CNTRL,
+	    m_hdr->start_dma_cmd);
+	if (rval)
+		goto error_exit;
+
+	/* Wait for dma operation to complete. */
+	for (wait = 0; wait < ISP8044_PEX_DMA_MAX_WAIT; wait++) {
+		rval = qla8044_rd_reg_indirect(vha,
+		    (dma_base_addr + ISP8044_PEX_DMA_CMD_STS_AND_CNTRL),
+		    &cmd_sts_and_cntrl);
+		if (rval)
+			goto error_exit;
+
+		if ((cmd_sts_and_cntrl & BIT_1) == 0)
+			break;
+
+		udelay(10);
+	}
+
+	/* Wait a max of 100 ms, otherwise fallback to rdmem entry read */
+	if (wait >= ISP8044_PEX_DMA_MAX_WAIT) {
+		rval = QLA_FUNCTION_FAILED;
+		goto error_exit;
+	}
+
+error_exit:
+	return rval;
+}
+
+static int
+qla8044_minidump_pex_dma_read(struct scsi_qla_host *vha,
+	struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
+{
+	struct qla_hw_data *ha = vha->hw;
+	int rval = QLA_SUCCESS;
+	struct qla8044_minidump_entry_rdmem_pex_dma *m_hdr = NULL;
+	uint32_t chunk_size, read_size;
+	uint8_t *data_ptr = (uint8_t *)*d_ptr;
+	void *rdmem_buffer = NULL;
+	dma_addr_t rdmem_dma;
+	struct qla8044_pex_dma_descriptor dma_desc;
+
+	rval = qla8044_check_dma_engine_state(vha);
+	if (rval != QLA_SUCCESS) {
+		ql_dbg(ql_dbg_p3p, vha, 0xb147,
+		    "DMA engine not available. Fallback to rdmem-read.\n");
+		return QLA_FUNCTION_FAILED;
+	}
+
+	m_hdr = (void *)entry_hdr;
+
+	rdmem_buffer = dma_alloc_coherent(&ha->pdev->dev,
+	    ISP8044_PEX_DMA_READ_SIZE, &rdmem_dma, GFP_KERNEL);
+	if (!rdmem_buffer) {
+		ql_dbg(ql_dbg_p3p, vha, 0xb148,
+		    "Unable to allocate rdmem dma buffer\n");
+		return QLA_FUNCTION_FAILED;
+	}
+
+	/* Prepare pex-dma descriptor to be written to MS memory. */
+	/* dma-desc-cmd layout:
+	 * 		0-3: dma-desc-cmd 0-3
+	 * 		4-7: pcid function number
+	 * 		8-15: dma-desc-cmd 8-15
+	 * dma_bus_addr: dma buffer address
+	 * cmd.read_data_size: amount of data-chunk to be read.
+	 */
+	dma_desc.cmd.dma_desc_cmd = (m_hdr->dma_desc_cmd & 0xff0f);
+	dma_desc.cmd.dma_desc_cmd |=
+	    ((PCI_FUNC(ha->pdev->devfn) & 0xf) << 0x4);
+
+	dma_desc.dma_bus_addr = rdmem_dma;
+	dma_desc.cmd.read_data_size = chunk_size = ISP8044_PEX_DMA_READ_SIZE;
+	read_size = 0;
+
+	/*
+	 * Perform rdmem operation using pex-dma.
+	 * Prepare dma in chunks of ISP8044_PEX_DMA_READ_SIZE.
+	 */
+	while (read_size < m_hdr->read_data_size) {
+		if (m_hdr->read_data_size - read_size <
+		    ISP8044_PEX_DMA_READ_SIZE) {
+			chunk_size = (m_hdr->read_data_size - read_size);
+			dma_desc.cmd.read_data_size = chunk_size;
+		}
+
+		dma_desc.src_addr = m_hdr->read_addr + read_size;
+
+		/* Prepare: Write pex-dma descriptor to MS memory. */
+		rval = qla8044_ms_mem_write_128b(vha,
+		    m_hdr->desc_card_addr, (void *)&dma_desc,
+		    (sizeof(struct qla8044_pex_dma_descriptor)/16));
+		if (rval) {
+			ql_log(ql_log_warn, vha, 0xb14a,
+			    "%s: Error writing rdmem-dma-init to MS !!!\n", __func__);
+			goto error_exit;
+		}
+		ql_dbg(ql_dbg_p3p, vha, 0xb14b,
+		    "%s: Dma-descriptor: Instruct for rdmem dma "
+		    "(chunk_size 0x%x).\n", __func__, chunk_size);
+
+		/* Execute: Start pex-dma operation. */
+		rval = qla8044_start_pex_dma(vha, m_hdr);
+		if (rval)
+			goto error_exit;
+
+		memcpy(data_ptr, rdmem_buffer, chunk_size);
+		data_ptr += chunk_size;
+		read_size += chunk_size;
+	}
+
+	*d_ptr = (void *)data_ptr;
+
+error_exit:
+	if (rdmem_buffer)
+		dma_free_coherent(&ha->pdev->dev, ISP8044_PEX_DMA_READ_SIZE,
+		    rdmem_buffer, rdmem_dma);
+
+	return rval;
+}
+
 /*
  *
  * qla8044_collect_md_data - Retrieve firmware minidump data.
@@ -2794,7 +2982,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 
 	/* Walk through the entry headers - validate/perform required action */
 	for (i = 0; i < num_entry_hdr; i++) {
-		if (data_collected >= ha->md_dump_size) {
+		if (data_collected > ha->md_dump_size) {
 			ql_log(ql_log_info, vha, 0xb103,
 			    "Data collected: [0x%x], "
 			    "Total Dump size: [0x%x]\n",
@@ -2834,11 +3022,16 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 			    entry_hdr, &data_ptr);
 			break;
 		case QLA82XX_RDMEM:
-			rval = qla8044_minidump_process_rdmem(vha,
+			rval = qla8044_minidump_pex_dma_read(vha,
 			    entry_hdr, &data_ptr);
 			if (rval != QLA_SUCCESS) {
-				qla8044_mark_entry_skipped(vha, entry_hdr, i);
-				goto md_failed;
+				rval = qla8044_minidump_process_rdmem(vha,
+				    entry_hdr, &data_ptr);
+				if (rval != QLA_SUCCESS) {
+					qla8044_mark_entry_skipped(vha,
+					    entry_hdr, i);
+					goto md_failed;
+				}
 			}
 			break;
 		case QLA82XX_BOARD:
