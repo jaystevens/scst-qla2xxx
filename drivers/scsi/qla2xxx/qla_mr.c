@@ -1404,17 +1404,17 @@ int
 qlafx00_process_aen(struct scsi_qla_host *vha, struct qla_work_evt *evt)
 {
 	int rval = 0;
+	uint32_t aen_code, aen_data;
+
+	aen_code = FCH_EVT_VENDOR_UNIQUE;
+	aen_data = evt->u.aenfx.evtcode;
 
 	switch (evt->u.aenfx.evtcode) {
-	case MBA_SYSTEM_ERR:		/* System Error */
-	case MBA_REQ_TRANSFER_ERR:	/* Request Transfer Error */
-	case MBA_RSP_TRANSFER_ERR:	/* Response Transfer Error */
-		break;
-	case MBA_SHUTDOWN_REQUESTED:	/* FW shutdown pending */
+	case QLAFX00_MBA_SHUTDOWN_RQSTD:	/* FW shutdown pending */
 		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 		rval = qlafx00_driver_shutdown(vha, 10);
 		break;
-	case MBA_PORT_UPDATE:		/* Port database update */
+	case QLAFX00_MBA_PORT_UPDATE:		/* Port database update */
 		if (evt->u.aenfx.mbx[1] == 0) {
 			if (evt->u.aenfx.mbx[2] == 1) {
 				if (!vha->flags.fw_tgt_reported)
@@ -1437,9 +1437,13 @@ qlafx00_process_aen(struct scsi_qla_host *vha, struct qla_work_evt *evt)
 			}
 		}
 		break;
-	case MBA_FW_RESTART_CMPLT:
+	case QLAFX00_MBA_LINK_UP:
+		aen_code = FCH_EVT_LINKUP;
+		aen_data = 0;
 		break;
-	case MBA_FW_INIT_FAILURE:
+	case QLAFX00_MBA_LINK_DOWN:
+		aen_code = FCH_EVT_LINKDOWN;
+		aen_data = 0;
 		break;
 	case QLAFX00_MBA_TEMP_OVER:
 	case QLAFX00_MBA_TEMP_CRIT:	/* Critical temperature event */
@@ -1452,6 +1456,10 @@ qlafx00_process_aen(struct scsi_qla_host *vha, struct qla_work_evt *evt)
 		scsi_unblock_requests(vha->host);
 		break;
 	}
+
+	fc_host_post_event(vha->host, fc_get_event_number(),
+	    aen_code, aen_data);
+
 	return rval;
 }
 
@@ -2999,6 +3007,7 @@ qlafx00_async_event(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_fx00 __iomem *reg;
+	int data_size = 1;
 
 	reg = &ha->iobase->ispfx00;
 	/* Setup to process RIO completion. */
@@ -3024,9 +3033,7 @@ qlafx00_async_event(scsi_qla_host_t *vha)
 		    "Asynchronous port Update received "
 		    "aenmb[0]: %x, aenmb[1]: %x, aenmb[2]: %x, aenmb[3]: %x\n",
 		    ha->aenmb[0], ha->aenmb[1], ha->aenmb[2], ha->aenmb[3]);
-
-		qlafx00_post_aenfx_work(vha, ha->aenmb[0],
-		    (uint32_t *)ha->aenmb, 4);
+		data_size = 4;
 		break;
 
 	case QLAFX00_MBA_TEMP_OVER:	/* Over temperature event */
@@ -3051,7 +3058,10 @@ qlafx00_async_event(scsi_qla_host_t *vha)
 		    "AEN:%04x %04x %04x %04x :%04x %04x %04x %04x\n",
 		    ha->aenmb[0], ha->aenmb[1], ha->aenmb[2], ha->aenmb[3],
 		    ha->aenmb[4], ha->aenmb[5], ha->aenmb[6], ha->aenmb[7]);
+		break;
 	}
+	qlafx00_post_aenfx_work(vha, ha->aenmb[0],
+	    (uint32_t *)ha->aenmb, data_size);
 }
 
 /**
