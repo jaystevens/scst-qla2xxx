@@ -1283,7 +1283,6 @@ qla8044_device_bootstrap(struct scsi_qla_host *vha)
 	int i, timeout;
 	uint32_t old_count, count;
 	int need_reset = 0, peg_stuck = 1;
-	uint32_t idc_ctrl;
 	struct qla_hw_data *ha = vha->hw;
 
 	need_reset = qla8044_need_reset(vha);
@@ -1327,15 +1326,6 @@ dev_initialize:
 	    "%s: HW State: INITIALIZING\n", __func__);
 	qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
 	    QLA8XXX_DEV_INITIALIZING);
-
-	/* For ISP8044, If IDC_CTRL GRACEFUL_RESET_BIT1 is set , reset it after
-	 * device goes to INIT state. */
-	idc_ctrl = qla8044_rd_reg(ha, QLA8044_IDC_DRV_CTRL);
-	if (idc_ctrl & GRACEFUL_RESET_BIT1) {
-		qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL,
-		    (idc_ctrl & ~GRACEFUL_RESET_BIT1));
-		ha->fw_dumped = 0;
-	}
 
 	qla8044_idc_unlock(ha);
 	rval = qla8044_start_firmware(vha);
@@ -2906,7 +2896,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 	uint32_t data_collected = 0, f_capture_mask ;
 	int i, rval = QLA_FUNCTION_FAILED;
 	uint64_t now;
-	uint32_t timestamp;
+	uint32_t timestamp, idc_control;
 	struct qla_hw_data *ha = vha->hw;
 
 	if (!ha->md_dump) {
@@ -2931,13 +2921,19 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 		goto md_failed;
 	}
 
-	if (ha->flags.isp82xx_no_md_cap) {
+	qla8044_idc_lock(ha);
+	idc_control = qla8044_rd_reg(ha, QLA8044_IDC_DRV_CTRL);
+	if (idc_control & GRACEFUL_RESET_BIT1) {
 		ql_log(ql_log_warn, vha, 0xb112,
 		    "Forced reset from application, "
 		    "ignore minidump capture\n");
-		ha->flags.isp82xx_no_md_cap = 0;
+		qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL,
+		    (idc_control | ~GRACEFUL_RESET_BIT1));
+		qla8044_idc_unlock(ha);
+
 		goto md_failed;
 	}
+	qla8044_idc_unlock(ha);
 
 	if (qla82xx_validate_template_chksum(vha)) {
 		ql_log(ql_log_info, vha, 0xb109,

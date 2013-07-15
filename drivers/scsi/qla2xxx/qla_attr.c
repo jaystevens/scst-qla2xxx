@@ -606,8 +606,11 @@ qla2x00_sysfs_write_reset(struct kobject *kobj,
 			qla82xx_set_reset_owner(vha);
 			qla82xx_idc_unlock(ha);
 		} else if (IS_QLA8044(ha)) {
-			ha->flags.isp82xx_no_md_cap = 1;
 			qla8044_idc_lock(ha);
+			idc_control = qla8044_rd_reg(ha,
+			    QLA8044_IDC_DRV_CTRL);
+			qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL,
+			    (idc_control | GRACEFUL_RESET_BIT1));
 			qla82xx_set_reset_owner(vha);
 			qla8044_idc_unlock(ha);
 		} else {
