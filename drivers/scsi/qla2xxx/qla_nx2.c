@@ -1171,8 +1171,11 @@ qla8044_restart(struct scsi_qla_host *vha)
 	qla8044_process_stop_seq(vha);
 
 	/* Collect minidump */
-	if (!ha->fw_dumped)
+	if (ql2xmdenable)
 		qla8044_get_minidump(vha);
+	else
+		ql_log(ql_log_fatal, vha, 0xb14c,
+		    "Minidump disabled.\n");
 
 	qla8044_process_init_seq(vha);
 
@@ -3132,15 +3135,12 @@ qla8044_get_minidump(struct scsi_qla_host *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
 
-	if ((ql2xmdenable) && (ha->flags.isp82xx_fw_hung) &&
-		!(ha->fw_dumped)) {
-		if (!qla8044_collect_md_data(vha)) {
-			ha->fw_dumped = 1;
-		} else {
-			ql_log(ql_log_fatal, vha, 0xb0db,
-			    "%s: Unable to collect minidump\n",
-			    __func__);
-		}
+	if (!qla8044_collect_md_data(vha)) {
+		ha->fw_dumped = 1;
+	} else {
+		ql_log(ql_log_fatal, vha, 0xb0db,
+		    "%s: Unable to collect minidump\n",
+		    __func__);
 	}
 }
 
