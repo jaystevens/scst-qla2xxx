@@ -14,8 +14,9 @@
  * | Module Init and Probe        |       0x015a       | 0x4b,0xba,0xfa,|
  * |                              |                    | 0x141,0x144,   |
  * |                              |                    | 0x146          |
- * | Mailbox commands             |       0x117f       | 0x1018,0x10ca, |
- * |                              |                    | 0x111a-0x111b, |
+ * | Mailbox commands             |       0x117f       | 0x1018-0x1019, |
+ * |                              |                    | 0x10ca,0x111a, |
+ * |                              |                    | 0x111b         |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
  * |                              |                    | 0x2016         |
  * | Queue Command and IO tracing |       0x3051       | 0x3006-0x300b  |
@@ -41,7 +42,7 @@
  * |                              |                    | 0x800b,0x8039  |
  * | AER/EEH                      |       0x9011       |		|
  * | Virtual Port                 |       0xa008       |		|
- * | ISP82XX Specific             |       0xb14c       | 0xb002,0xb024  |
+ * | ISP82XX Specific             |       0xb14f       | 0xb002,0xb024  |
  * |                              |                    | 0xb09e,0xb0ae  |
  * |                              |                    | 0xb0e0-0xb0ef  |
  * |                              |                    | 0xb085,0xb0dc	|

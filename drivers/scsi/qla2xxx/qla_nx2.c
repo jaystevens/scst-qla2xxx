@@ -3151,7 +3151,7 @@ qla8044_poll_flash_status_reg(struct scsi_qla_host *vha)
 		ret_val = qla8044_rd_reg_indirect(vha, QLA8044_FLASH_STATUS,
 		    &flash_status);
 		if (ret_val) {
-			ql_log(ql_log_warn, vha, 0xb120,
+			ql_log(ql_log_warn, vha, 0xb142,
 			    "%s: Failed to read FLASH_STATUS reg.\n",
 			    __func__);
 			break;
@@ -3482,7 +3482,7 @@ qla8044_write_optrom_data(struct scsi_qla_host *vha, uint8_t *buf,
 		}
 		erase_offset += QLA8044_SECTOR_SIZE;
 	}
-	ql_dbg(ql_dbg_user, vha, 0xb139,
+	ql_dbg(ql_dbg_user, vha, 0xb14e,
 	    "Got write for addr = 0x%x length=0x%x.\n",
 	    offset, length);
 
@@ -3557,7 +3557,7 @@ qla8044_intr_handler(int irq, void *dev_id)
 
 	/* Legacy interrupt is valid if bit31 of leg_int_ptr is set */
 	if (!(leg_int_ptr & (LEG_INT_PTR_B31))) {
-		ql_dbg(ql_dbg_p3p, vha, 0xb144,
+		ql_dbg(ql_dbg_p3p, vha, 0xb14d,
 		    "%s: Legacy Interrupt Bit 31 not set, "
 		    "spurious interrupt!\n", __func__);
 		return IRQ_NONE;
@@ -3566,7 +3566,7 @@ qla8044_intr_handler(int irq, void *dev_id)
 	pf_bit = ha->portnum << 16;
 	/* Validate the PCIE function ID set in leg_int_ptr bits [19..16] */
 	if ((leg_int_ptr & (PF_BITS_MASK)) != pf_bit) {
-		ql_dbg(ql_dbg_p3p, vha, 0xb145,
+		ql_dbg(ql_dbg_p3p, vha, 0xb14f,
 		    "%s: Incorrect function ID 0x%x in "
 		    "legacy interrupt register, "
 		    "ha->pf_bit = 0x%x\n", __func__,
@@ -3651,7 +3651,7 @@ qla8044_clear_rst_ready(scsi_qla_host_t *vha)
 	 */
 	drv_state &= ~(1 << vha->hw->portnum);
 
-	ql_dbg(ql_dbg_p3p, vha, 0xb143,
+	ql_dbg(ql_dbg_p3p, vha, 0xb149,
 	    "drv_state: 0x%08x\n", drv_state);
 	qla8044_wr_direct(vha, QLA8044_CRB_DRV_STATE_INDEX, drv_state);
 }
