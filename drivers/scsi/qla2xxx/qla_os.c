@@ -2944,13 +2944,18 @@ probe_failed:
 	scsi_host_put(base_vha->host);
 
 probe_hw_failed:
-	if (IS_P3P_TYPE(ha)) {
+	if (IS_QLA82XX(ha)) {
 		qla82xx_idc_lock(ha);
 		qla82xx_clear_drv_active(ha);
 		qla82xx_idc_unlock(ha);
 	}
+	if (IS_QLA8044(ha)) {
+		qla8044_idc_lock(ha);
+		qla8044_clear_drv_active(base_vha);
+		qla8044_idc_unlock(ha);
+	}
 iospace_config_failed:
-	if (IS_QLA82XX(ha)) {
+	if (IS_P3P_TYPE(ha)) {
 		if (!ha->nx_pcibase)
 			iounmap((device_reg_t __iomem *)ha->nx_pcibase);
 		if (!ql2xdbwr)
@@ -3120,6 +3125,11 @@ qla2x00_remove_one(struct pci_dev *pdev)
 
 	scsi_host_put(base_vha->host);
 
+	if (IS_QLA8044(ha)) {
+		qla8044_idc_lock(ha);
+		qla8044_clear_drv_active(base_vha);
+		qla8044_idc_unlock(ha);
+	}
 	if (IS_QLA82XX(ha)) {
 		qla82xx_idc_lock(ha);
 		qla82xx_clear_drv_active(ha);
