@@ -3128,7 +3128,7 @@ qla82xx_check_md_needed(scsi_qla_host_t *vha)
 			if (fw_major_version != ha->fw_major_version ||
 			    fw_minor_version != ha->fw_minor_version ||
 			    fw_subminor_version != ha->fw_subminor_version) {
-				ql_log(ql_log_info, vha, 0xb02d,
+				ql_dbg(ql_dbg_p3p, vha, 0xb02d,
 				    "Firmware version differs "
 				    "Previous version: %d:%d:%d - "
 				    "New version: %d:%d:%d\n",
