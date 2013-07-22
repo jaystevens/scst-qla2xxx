@@ -4621,7 +4621,7 @@ qla82xx_mbx_beacon_ctl(scsi_qla_host_t *vha, int enable)
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
 
-	if (!IS_QLA82XX(ha))
+	if (!IS_P3P_TYPE(ha))
 		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1127,

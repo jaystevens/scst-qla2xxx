@@ -5157,7 +5157,7 @@ qla2x00_timer(scsi_qla_host_t *vha)
 	/* Check if beacon LED needs to be blinked for physical host only */
 	if (!vha->vp_idx && (ha->beacon_blink_led == 1)) {
 		/* There is no beacon_blink function for ISP82xx */
-		if (!IS_QLA82XX(ha)) {
+		if (!IS_P3P_TYPE(ha)) {
 			set_bit(BEACON_BLINK_NEEDED, &vha->dpc_flags);
 			start_dpc++;
 		}
