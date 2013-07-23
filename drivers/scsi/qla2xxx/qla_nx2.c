@@ -1280,47 +1280,34 @@ static int
 qla8044_device_bootstrap(struct scsi_qla_host *vha)
 {
 	int rval = QLA_FUNCTION_FAILED;
-	int i, timeout;
-	uint32_t old_count, count;
-	int need_reset = 0, peg_stuck = 1;
+	int i;
+	uint32_t old_count = 0, count = 0;
+	int need_reset = 0;
 	struct qla_hw_data *ha = vha->hw;
 
 	need_reset = qla8044_need_reset(vha);
 
-	old_count = qla8044_rd_direct(vha, QLA8044_PEG_ALIVE_COUNTER_INDEX);
+	if (!need_reset) {
+		old_count = qla8044_rd_direct(vha,
+		    QLA8044_PEG_ALIVE_COUNTER_INDEX);
 
-	for (i = 0; i < 10; i++) {
-		timeout = msleep_interruptible(200);
-		if (timeout) {
-			qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
-			    QLA8XXX_DEV_FAILED);
-			return rval;
+		for (i = 0; i < 10; i++) {
+			msleep(200);
+
+			count = qla8044_rd_direct(vha,
+			    QLA8044_PEG_ALIVE_COUNTER_INDEX);
+			if (count != old_count) {
+				rval = QLA_SUCCESS;
+				goto dev_ready;
+			}
 		}
-
-		count = qla8044_rd_direct(vha, QLA8044_PEG_ALIVE_COUNTER_INDEX);
-		if (count != old_count)
-			peg_stuck = 0;
-	}
-
-	if (need_reset) {
+		qla8044_flash_lock_recovery(vha);
+	} else {
 		/* We are trying to perform a recovery here. */
-		if (peg_stuck)
+		if (ha->flags.isp82xx_fw_hung)
 			qla8044_flash_lock_recovery(vha);
-		goto dev_initialize;
-	} else  {
-		/* Start of day for this ha context. */
-		if (peg_stuck) {
-			/* Either we are the first or recovery in progress. */
-			qla8044_flash_lock_recovery(vha);
-			goto dev_initialize;
-		} else {
-			/* Firmware already running. */
-			rval = QLA_SUCCESS;
-			goto dev_ready;
-		}
 	}
 
-dev_initialize:
 	/* set to DEV_INITIALIZING */
 	ql_log(ql_log_info, vha, 0xb0b2,
 	    "%s: HW State: INITIALIZING\n", __func__);
@@ -1958,7 +1945,7 @@ int qla8044_read_temperature(scsi_qla_host_t *vha)
  *
  * Context: Interrupt
  **/
-static int
+int
 qla8044_check_fw_alive(struct scsi_qla_host *vha)
 {
 	uint32_t fw_heartbeat_counter;

@@ -3623,7 +3623,7 @@ qla2x00_wait_for_fcoe_ctx_reset(scsi_qla_host_t *vha)
 void
 qla82xx_chip_reset_cleanup(scsi_qla_host_t *vha)
 {
-	int i;
+	int i, fw_state = 0;
 	unsigned long flags;
 	struct qla_hw_data *ha = vha->hw;
 
@@ -3634,7 +3634,11 @@ qla82xx_chip_reset_cleanup(scsi_qla_host_t *vha)
 	if (!ha->flags.isp82xx_fw_hung) {
 		for (i = 0; i < 2; i++) {
 			msleep(1000);
-			if (qla82xx_check_fw_alive(vha)) {
+			if (IS_QLA82XX(ha))
+				fw_state = qla82xx_check_fw_alive(vha);
+			else if (IS_QLA8044(ha))
+				fw_state = qla8044_check_fw_alive(vha);
+			if (fw_state) {
 				ha->flags.isp82xx_fw_hung = 1;
 				qla82xx_clear_pending_mbx(vha);
 				break;
