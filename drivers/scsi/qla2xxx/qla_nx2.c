@@ -1283,6 +1283,7 @@ qla8044_device_bootstrap(struct scsi_qla_host *vha)
 	int i;
 	uint32_t old_count = 0, count = 0;
 	int need_reset = 0;
+	uint32_t idc_ctrl;
 	struct qla_hw_data *ha = vha->hw;
 
 	need_reset = qla8044_need_reset(vha);
@@ -1325,6 +1326,15 @@ qla8044_device_bootstrap(struct scsi_qla_host *vha)
 		qla8044_wr_direct(vha, QLA8044_CRB_DEV_STATE_INDEX,
 		    QLA8XXX_DEV_FAILED);
 		return rval;
+	}
+
+	/* For ISP8044, If IDC_CTRL GRACEFUL_RESET_BIT1 is set , reset it after
+	 * device goes to INIT state. */
+	idc_ctrl = qla8044_rd_reg(ha, QLA8044_IDC_DRV_CTRL);
+	if (idc_ctrl & GRACEFUL_RESET_BIT1) {
+		qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL,
+		    (idc_ctrl & ~GRACEFUL_RESET_BIT1));
+		ha->fw_dumped = 0;
 	}
 
 dev_ready:
