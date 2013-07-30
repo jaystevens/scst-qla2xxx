@@ -1853,6 +1853,7 @@ qla8044_device_state_handler(struct scsi_qla_host *vha)
 		/* NOTE: Make sure idc unlocked upon exit of switch statement */
 		switch (dev_state) {
 		case QLA8XXX_DEV_READY:
+			ha->flags.nic_core_reset_owner = 0;
 			goto exit;
 		case QLA8XXX_DEV_COLD:
 			rval = qla8044_device_bootstrap(vha);
@@ -1889,6 +1890,7 @@ qla8044_device_state_handler(struct scsi_qla_host *vha)
 			    (ha->fcoe_reset_timeout * HZ);
 			break;
 		case QLA8XXX_DEV_FAILED:
+			ha->flags.nic_core_reset_owner = 0;
 			qla8044_idc_unlock(ha);
 			qla8xxx_dev_failed_handler(vha);
 			rval = QLA_FUNCTION_FAILED;
