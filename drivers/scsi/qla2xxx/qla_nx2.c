@@ -2927,7 +2927,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 		    "Forced reset from application, "
 		    "ignore minidump capture\n");
 		qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL,
-		    (idc_control | ~GRACEFUL_RESET_BIT1));
+		    (idc_control & ~GRACEFUL_RESET_BIT1));
 		qla8044_idc_unlock(ha);
 
 		goto md_failed;
