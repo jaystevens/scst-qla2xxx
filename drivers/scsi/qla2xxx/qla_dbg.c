@@ -29,7 +29,7 @@
  * |				  | 		       | 0x5047,0x5052  |
  * |				  | 		       | 0x5074,0x5075  |
  * | Timer Routines               |       0x6012       |                |
- * | User Space Interactions      |       0x70df       | 0x7018,0x702e  |
+ * | User Space Interactions      |       0x70e1       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
