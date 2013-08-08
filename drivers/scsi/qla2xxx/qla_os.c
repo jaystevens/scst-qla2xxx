@@ -956,6 +956,7 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	unsigned long flags;
 	int wait = 0;
 	struct qla_hw_data *ha = vha->hw;
+	uint32_t handle = 0;
 
 	if (!CMD_SP(cmd))
 		return SUCCESS;
@@ -993,7 +994,14 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 		wait = 1;
 	}
 	spin_lock_irqsave(&ha->hardware_lock, flags);
+	handle = sp->handle;
 	sp->done(ha, sp, 0);
+	/*
+	 * If the mailbox command failed, clear the entry in the in-flight
+	 * commands array as the entry won't be cleared in interrupt context.
+	 */
+	if (ret == FAILED)
+		vha->req->outstanding_cmds[handle] = NULL;
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	/* Did the command return during mailbox execution? */
