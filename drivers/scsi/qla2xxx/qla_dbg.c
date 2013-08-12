@@ -11,10 +11,11 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x015c       | 0x4b,0xba,0xfa,|
- * |                              |                    | 0x141,0x144,   |
- * |                              |                    | 0x146,0x15b    |
- * | Mailbox commands             |       0x1185       | 0x1018-0x1019, |
+ * | Module Init and Probe        |       0x017d       | 0x004b,0x0141	|
+ * |                              |                    | 0x0144,0x0146	|
+ * |                              |                    | 0x015b-0x0160	|
+ * |                              |                    | 0x016e-0x0170	|
+ * | Mailbox commands             |       0x1185       | 0x1018-0x1019	|
  * |                              |                    | 0x10ca         |
  * |                              |                    | 0x1115-0x1116  |
  * |                              |                    | 0x111a-0x111b  |
@@ -38,7 +39,8 @@
  * |                              |                    | 0x70a5-0x70a6  |
  * |                              |                    | 0x70a8,0x70ab  |
  * |                              |                    | 0x70ad-0x70ae  |
- * |                              |                    | 0x70cf-0x70db  |
+ * |                              |                    | 0x70cf		|
+ * |                              |                    | 0x70d7-0x70db  |
  * | Task Management              |       0x803d       | 0x8025-0x8026  |
  * |                              |                    | 0x800b,0x8039  |
  * | AER/EEH                      |       0x9011       |		|
@@ -53,7 +55,11 @@
  * |                              |                    | 0xb13a,0xb142	|
  * |                              |                    | 0xb13c-0xb140	|
  * | MultiQ                       |       0xc00c       |		|
- * | Misc                         |       0xd010       |		|
+ * | Misc                         |       0xd2ff       | 0xd017-0xd019	|
+ * |                              |                    | 0xd020		|
+ * |                              |                    | 0xd02e-0xd0ff	|
+ * |                              |                    | 0xd101-0xd1fe	|
+ * |                              |                    | 0xd212-0xd2fe	|
  * ----------------------------------------------------------------------
  */
 
@@ -94,7 +100,87 @@ qla2xxx_copy_queues(struct qla_hw_data *ha, void *ptr)
 	return ptr + (rsp->length * sizeof(response_t));
 }
 
-static int
+int
+qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
+    uint32_t ram_dwords, void **nxt)
+{
+	int rval;
+	uint32_t cnt, stat, timer, dwords, idx;
+	uint16_t mb0, mb1;
+	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
+	dma_addr_t dump_dma = ha->gid_list_dma;
+	uint32_t *dump = (uint32_t *)ha->gid_list;
+
+	rval = QLA_SUCCESS;
+	mb0 = 0;
+
+	WRT_REG_WORD(&reg->mailbox0, MBC_LOAD_DUMP_MPI_RAM);
+	clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
+
+	dwords = qla2x00_gid_list_size(ha) / 4;
+	for (cnt = 0; cnt < ram_dwords && rval == QLA_SUCCESS;
+	    cnt += dwords, addr += dwords) {
+		if (cnt + dwords > ram_dwords)
+			dwords = ram_dwords - cnt;
+
+		WRT_REG_WORD(&reg->mailbox1, LSW(addr));
+		WRT_REG_WORD(&reg->mailbox8, MSW(addr));
+
+		WRT_REG_WORD(&reg->mailbox2, MSW(dump_dma));
+		WRT_REG_WORD(&reg->mailbox3, LSW(dump_dma));
+		WRT_REG_WORD(&reg->mailbox6, MSW(MSD(dump_dma)));
+		WRT_REG_WORD(&reg->mailbox7, LSW(MSD(dump_dma)));
+
+		WRT_REG_WORD(&reg->mailbox4, MSW(dwords));
+		WRT_REG_WORD(&reg->mailbox5, LSW(dwords));
+
+		WRT_REG_WORD(&reg->mailbox9, 0);
+		WRT_REG_DWORD(&reg->hccr, HCCRX_SET_HOST_INT);
+
+		ha->flags.mbox_int = 0;
+		for (timer = 6000000; timer; timer--) {
+			/* Check for pending interrupts. */
+			stat = RD_REG_DWORD(&reg->host_status);
+			if (stat & HSRX_RISC_INT) {
+				stat &= 0xff;
+
+				if (stat == 0x1 || stat == 0x2 ||
+				    stat == 0x10 || stat == 0x11) {
+					set_bit(MBX_INTERRUPT,
+					    &ha->mbx_cmd_flags);
+
+					mb0 = RD_REG_WORD(&reg->mailbox0);
+					mb1 = RD_REG_WORD(&reg->mailbox1);
+
+					WRT_REG_DWORD(&reg->hccr,
+					    HCCRX_CLR_RISC_INT);
+					RD_REG_DWORD(&reg->hccr);
+					break;
+				}
+
+				/* Clear this intr; it wasn't a mailbox intr */
+				WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_INT);
+				RD_REG_DWORD(&reg->hccr);
+			}
+			udelay(5);
+		}
+		ha->flags.mbox_int = 1;
+
+		if (test_and_clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags)) {
+			rval = mb0 & MBS_MASK;
+			for (idx = 0; idx < dwords; idx++)
+				ram[cnt + idx] = IS_QLA27XX(ha) ?
+				    le32_to_cpu(dump[idx]) : swab32(dump[idx]);
+		} else {
+			rval = QLA_FUNCTION_FAILED;
+		}
+	}
+
+	*nxt = rval == QLA_SUCCESS ? &ram[cnt] : NULL;
+	return rval;
+}
+
+int
 qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
     uint32_t ram_dwords, void **nxt)
 {
@@ -129,6 +215,7 @@ qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 		WRT_REG_WORD(&reg->mailbox5, LSW(dwords));
 		WRT_REG_DWORD(&reg->hccr, HCCRX_SET_HOST_INT);
 
+		ha->flags.mbox_int = 0;
 		for (timer = 6000000; timer; timer--) {
 			/* Check for pending interrupts. */
 			stat = RD_REG_DWORD(&reg->host_status);
@@ -154,11 +241,13 @@ qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 			}
 			udelay(5);
 		}
+		ha->flags.mbox_int = 1;
 
 		if (test_and_clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags)) {
 			rval = mb0 & MBS_MASK;
 			for (idx = 0; idx < dwords; idx++)
-				ram[cnt + idx] = swab32(dump[idx]);
+				ram[cnt + idx] = IS_QLA27XX(ha) ?
+				    le32_to_cpu(dump[idx]) : swab32(dump[idx]);
 		} else {
 			rval = QLA_FUNCTION_FAILED;
 		}
@@ -198,7 +287,7 @@ qla24xx_read_window(struct device_reg_24xx __iomem *reg, uint32_t iobase,
 	return buf;
 }
 
-static inline int
+int
 qla24xx_pause_risc(struct device_reg_24xx __iomem *reg)
 {
 	int rval = QLA_SUCCESS;
@@ -217,7 +306,7 @@ qla24xx_pause_risc(struct device_reg_24xx __iomem *reg)
 	return rval;
 }
 
-static int
+int
 qla24xx_soft_reset(struct qla_hw_data *ha)
 {
 	int rval = QLA_SUCCESS;
@@ -479,7 +568,7 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 	struct qla2xxx_mq_chain *mq = ptr;
 	device_reg_t __iomem *reg;
 
-	if (!ha->mqenable || IS_QLA83XX(ha))
+	if (!ha->mqenable || IS_QLA83XX(ha) || IS_QLA27XX(ha))
 		return ptr;
 
 	mq = ptr;
