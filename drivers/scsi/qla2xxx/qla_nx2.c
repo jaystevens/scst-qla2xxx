@@ -3212,7 +3212,7 @@ exit_func:
 /*
  * This function assumes that the flash lock is held.
  */
-int
+static int
 qla8044_unprotect_flash(scsi_qla_host_t *vha)
 {
 	int ret_val;
@@ -3229,7 +3229,7 @@ qla8044_unprotect_flash(scsi_qla_host_t *vha)
 /*
  * This function assumes that the flash lock is held.
  */
-int
+static int
 qla8044_protect_flash(scsi_qla_host_t *vha)
 {
 	int ret_val;
@@ -3300,7 +3300,7 @@ qla8044_erase_flash_sector(struct scsi_qla_host *vha,
  *
  * NOTE: Lock should be held on entry
  */
-int
+static int
 qla8044_flash_write_u32(struct scsi_qla_host *vha, uint32_t addr,
     uint32_t *p_data)
 {
