@@ -2178,8 +2178,9 @@ check_scsi_status:
 		}
 
 		ql_dbg(ql_dbg_io, fcport->vha, 0x3041,
-		    "Port to be marked lost on fcport=%p, current port state="
-		    "%s.\n", fcport,
+		    "Port to be marked lost on fcport=%02x%02x%02x, current "
+		    "port state= %s.\n", fcport->d_id.b.domain,
+		    fcport->d_id.b.area, fcport->d_id.b.al_pa,
 		    port_state_str[atomic_read(&fcport->state)]);
 
 		if (atomic_read(&fcport->state) == FCS_ONLINE)
