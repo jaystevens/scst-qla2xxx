@@ -248,6 +248,10 @@ qlafx00_abort_command(srb_t *sp)
 		/* Command not found. */
 		return QLA_FUNCTION_FAILED;
 	}
+	if (sp->type == SRB_FXIOCB_DCMD)
+		return qlafx00_fx_disc(vha, &vha->hw->mr.fcport,
+		    FXDISC_ABORT_IOCTL);
+
 	return qlafx00_async_abt_cmd(sp);
 }
 
@@ -1561,6 +1565,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		    goto done_free_sp;
 	    }
 	    break;
+	case FXDISC_ABORT_IOCTL:
 	default:
 	    break;
 	}
@@ -1690,7 +1695,10 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		ql_dump_buffer(ql_dbg_init + ql_dbg_buffer, vha, 0x0150,
 		    (uint8_t *)pinfo, 16);
 		memcpy(vha->hw->gid_list, pinfo, QLAFX00_TGT_NODE_LIST_SIZE);
-	}
+	} else if (fx_type == FXDISC_ABORT_IOCTL)
+		fdisc->u.fxiocb.result = (fdisc->u.fxiocb.result == 0x68) ?
+		    QLA_SUCCESS : QLA_FUNCTION_FAILED;
+
 	rval = fdisc->u.fxiocb.result;
 
 done_unmap_dma:
