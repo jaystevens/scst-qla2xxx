@@ -684,6 +684,10 @@ qlafx00_fw_ready(scsi_qla_host_t *vha)
 	return rval;
 }
 
+#define ql_le_long_to_cpu _ql_le_long_to_cpu(BITS_PER_LONG)
+#define _ql_le_long_to_cpu(x) __ql_le_long_to_cpu(x)
+#define __ql_le_long_to_cpu(x) le##x##_to_cpu
+
 static int
 qlafx00_find_all_targets(scsi_qla_host_t *vha,
 	struct list_head *new_fcports)
@@ -693,6 +697,7 @@ qlafx00_find_all_targets(scsi_qla_host_t *vha,
 	fc_port_t	*fcport, *new_fcport;
 	int		found;
 	struct qla_hw_data *ha = vha->hw;
+	long *lptr, *end;
 
 	rval = QLA_SUCCESS;
 
@@ -716,8 +721,15 @@ qlafx00_find_all_targets(scsi_qla_host_t *vha,
 	if (new_fcport == NULL)
 		return QLA_MEMORY_ALLOC_FAILED;
 
-	for_each_bit(tgt_id, (void *)ha->gid_list,  QLAFX00_TGT_NODE_LIST_SIZE) {
+	lptr =  (void *)ha->gid_list;
+	end = (void *)ha->gid_list + QLAFX00_TGT_NODE_LIST_SIZE;
+	while (lptr < end) {
+		*lptr = ql_le_long_to_cpu(*lptr);
+		lptr++;
+	}
 
+	for_each_bit(tgt_id, (void *)ha->gid_list,
+	    QLAFX00_TGT_NODE_LIST_SIZE) {
 		/* Send get target node info */
 		new_fcport->tgt_id = tgt_id;
 		rval = qlafx00_fx_disc(vha, new_fcport,
@@ -1574,7 +1586,8 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 				fdisc->u.fxiocb.req_addr;
 			phost_info = &preg_hsi->hsi;
 			memset(preg_hsi, 0, sizeof(struct register_host_info));
-			phost_info->os_type = OS_TYPE_LINUX;
+			phost_info->os_type =
+			    __constant_cpu_to_le32(OS_TYPE_LINUX);
 			strncpy(phost_info->sysname,
 			    p_sysid->sysname, SYSNAME_LENGTH);
 			strncpy(phost_info->nodename,
@@ -1592,7 +1605,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 			strncpy(phost_info->hostdriver,
 			    QLA2XXX_VERSION, VERSION_LENGTH);
 			do_gettimeofday(&tv);
-			preg_hsi->utc = (uint64_t)tv.tv_sec;
+			preg_hsi->utc = __constant_cpu_to_le64(tv.tv_sec);
 			ql_dbg(ql_dbg_init, vha, 0x0149,
 			    "ISP%04X: Host registration with firmware\n",
 			    ha->pdev->device);
@@ -2468,16 +2481,15 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct req_que *req,
 
 		memset(&fstatus, 0, sizeof(qla_mt_iocb_rsp_fx00_t));
 
-		fstatus.reserved_1 = pkt->reserved_0;
-		fstatus.func_type = pkt->comp_func_num;
-		fstatus.ioctl_flags = pkt->fw_iotcl_flags;
-		fstatus.ioctl_data = pkt->dataword_r;
-		fstatus.adapid = pkt->adapid;
-		fstatus.adapid_hi = pkt->adapid_hi;
-		fstatus.reserved_2 = pkt->reserved_1;
-		fstatus.res_count = pkt->residuallen;
-		fstatus.status = pkt->status;
-		fstatus.seq_number = pkt->seq_no;
+		fstatus.reserved_1 = le32_to_cpu(pkt->reserved_0);
+		fstatus.func_type = le16_to_cpu(pkt->comp_func_num);
+		fstatus.ioctl_flags = le16_to_cpu(pkt->fw_iotcl_flags);
+		fstatus.ioctl_data = le32_to_cpu(pkt->dataword_r);
+		fstatus.adapid = le64_to_cpu(pkt->adapid);
+		fstatus.reserved_2 = le32_to_cpu(pkt->reserved_1);
+		fstatus.res_count = le32_to_cpu(pkt->residuallen);
+		fstatus.status = le32_to_cpu(pkt->status);
+		fstatus.seq_number = le32_to_cpu(pkt->seq_no);
 		memcpy(fstatus.reserved_3,
 		    pkt->reserved_2, 20 * sizeof(uint8_t));
 
@@ -2883,7 +2895,7 @@ void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
 	handle_ptr = (uint32_t *) &stsmfx->handles[0];
 
 	for (i = 0; i < handle_count; i++) {
-		hindex = le32_to_cpu(*handle_ptr);
+		hindex = *handle_ptr;
 		handle = LSW(hindex);
 		que = MSW(hindex);
 		req = ha->req_q_map[que];
@@ -3244,8 +3256,7 @@ qlafx00_build_scsi_iocbs(srb_t *sp, cmd_type_7_fx00_t *cmd_pkt,
 	cont_pkt = NULL;
 
 	/* Update entry type to indicate Command Type 3 IOCB */
-	*((uint32_t *)(&lcmd_pkt->entry_type)) =
-	    __constant_cpu_to_le32(FX00_COMMAND_TYPE_7);
+	lcmd_pkt->entry_type = FX00_COMMAND_TYPE_7;
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
@@ -3407,7 +3418,7 @@ qlafx00_start_scsi(srb_t *sp)
 	}
 
 	/* Load SCSI command packet. */
-	host_to_adap(cmd->cmnd, lcmd_pkt.fcp_cdb, sizeof(lcmd_pkt.fcp_cdb));
+	memcpy(lcmd_pkt.fcp_cdb, cmd->cmnd, sizeof(lcmd_pkt.fcp_cdb));
 	lcmd_pkt.byte_count = cpu_to_le32((uint32_t)scsi_bufflen(cmd));
 
 	/* Build IOCB segments */
@@ -3465,7 +3476,7 @@ qlafx00_tm_iocb(srb_t *sp, struct tsk_mgmt_entry_fx00 *ptm_iocb)
 	memset(&tm_iocb, 0, sizeof(struct tsk_mgmt_entry_fx00));
 	tm_iocb.entry_type = TSK_MGMT_IOCB_TYPE_FX00;
 	tm_iocb.entry_count = 1;
-	tm_iocb.handle = cpu_to_le32(MAKE_HANDLE(req->id, sp->handle));
+	tm_iocb.handle = MAKE_HANDLE(req->id, sp->handle);
 	tm_iocb.handle_hi = 0;
 	tm_iocb.timeout = cpu_to_le16(qla2x00_get_async_timeout(vha) + 2);
 	tm_iocb.tgt_id = cpu_to_le16(sp->fcport->tgt_id);
@@ -3492,7 +3503,7 @@ qlafx00_abort_iocb(srb_t *sp, struct abort_iocb_entry_fx00 *pabt_iocb)
 	memset(&abt_iocb, 0, sizeof(struct abort_iocb_entry_fx00));
 	abt_iocb.entry_type = ABORT_IOCB_TYPE_FX00;
 	abt_iocb.entry_count = 1;
-	abt_iocb.handle = cpu_to_le32(MAKE_HANDLE(req->id, sp->handle));
+	abt_iocb.handle = MAKE_HANDLE(req->id, sp->handle);
 	abt_iocb.abort_handle =
 	    cpu_to_le32(MAKE_HANDLE(req->id, fxio->u.abt.cmd_hndl));
 	abt_iocb.tgt_id_sts = cpu_to_le16(sp->fcport->tgt_id);
@@ -3514,16 +3525,15 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 
 	memset(&fx_iocb, 0, sizeof(struct fxdisc_entry_fx00));
 	fx_iocb.entry_type = FX00_IOCB_TYPE;
-	fx_iocb.handle = cpu_to_le32(sp->handle);
+	fx_iocb.handle = sp->handle;
 	fx_iocb.entry_count = entry_cnt;
 
 	if (sp->type == SRB_FXIOCB_DCMD) {
 		fx_iocb.func_num =
 		    cpu_to_le16(sp->u.iocb_cmd.u.fxiocb.req_func_type);
-		fx_iocb.adapid = cpu_to_le32(fxio->u.fxiocb.adapter_id);
-		fx_iocb.adapid_hi = cpu_to_le32(fxio->u.fxiocb.adapter_id_hi);
+		fx_iocb.adapid = cpu_to_le64(fxio->u.fxiocb.adapter_id);
 		fx_iocb.reserved_0 = cpu_to_le32(fxio->u.fxiocb.reserved_0);
-		fx_iocb.reserved_1 = cpu_to_le32(fxio->u.fxiocb.reserved_1);
+		fx_iocb.reserved_1 = fxio->u.fxiocb.reserved_1;
 		fx_iocb.dataword_extra = cpu_to_le32(fxio->u.fxiocb.req_data_extra);
 
 		if (fxio->u.fxiocb.flags & SRB_FXDISC_REQ_DMA_VALID) {
@@ -3561,13 +3571,13 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 		piocb_rqst = (qla_mt_iocb_rqst_fx00_t *)
 			&bsg_job->request->rqst_data.h_vendor.vendor_cmd[1];
 
-		fx_iocb.func_num = piocb_rqst->func_type;
-		fx_iocb.adapid = piocb_rqst->adapid;
-		fx_iocb.adapid_hi = piocb_rqst->adapid_hi;
-		fx_iocb.reserved_0 = piocb_rqst->reserved_0;
+		fx_iocb.func_num = cpu_to_le16(piocb_rqst->func_type);
+		fx_iocb.adapid = cpu_to_le64(piocb_rqst->adapid);
+		fx_iocb.reserved_0 = cpu_to_le32(piocb_rqst->reserved_0);
 		fx_iocb.reserved_1 = piocb_rqst->reserved_1;
-		fx_iocb.dataword_extra = piocb_rqst->dataword_extra;
-		fx_iocb.dataword = piocb_rqst->dataword;
+		fx_iocb.dataword_extra =
+		    cpu_to_le32(piocb_rqst->dataword_extra);
+		fx_iocb.dataword = cpu_to_le32(piocb_rqst->dataword);
 		fx_iocb.req_xfrcnt = cpu_to_le16(piocb_rqst->req_len);
 		fx_iocb.rsp_xfrcnt = cpu_to_le16(piocb_rqst->rsp_len);
 
@@ -3580,7 +3590,7 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 
 			fx_iocb.req_dsdcnt =
 			    cpu_to_le16(bsg_job->request_payload.sg_cnt);
-			tot_dsds = cpu_to_le32(bsg_job->request_payload.sg_cnt);
+			tot_dsds = bsg_job->request_payload.sg_cnt;
 			cur_dsd = (uint32_t *)&fx_iocb.dseg_rq_address[0];
 			avail_dsds = 1;
 			for_each_sg(bsg_job->request_payload.sg_list, sg,
@@ -3636,7 +3646,7 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 
 			fx_iocb.rsp_dsdcnt =
 			   cpu_to_le16(bsg_job->reply_payload.sg_cnt);
-			tot_dsds = cpu_to_le32(bsg_job->reply_payload.sg_cnt);
+			tot_dsds = bsg_job->reply_payload.sg_cnt;
 			cur_dsd = (uint32_t *)&fx_iocb.dseg_rsp_address[0];
 			avail_dsds = 1;
 

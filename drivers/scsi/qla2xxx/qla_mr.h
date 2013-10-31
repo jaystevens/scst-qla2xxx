@@ -171,15 +171,14 @@ typedef struct ioctl_iocb_entry_fx00 {
 	uint16_t fw_iotcl_flags;
 
 	uint32_t dataword_r;		/* Data word returned */
-	uint32_t adapid;		/* Adapter ID */
-	uint32_t adapid_hi;		/* Adapter ID high */
+	uint64_t adapid;		/* Adapter ID */
 	uint32_t reserved_1;
 
 	uint32_t seq_no;
 	uint8_t reserved_2[20];
 	uint32_t residuallen;
 	uint32_t status;
-} ioctl_iocb_entry_fx00_t;
+} __packed ioctl_iocb_entry_fx00_t;
 
 #define STATUS_CONT_TYPE_FX00 0x04
 
@@ -207,10 +206,9 @@ typedef struct fxdisc_entry_fx00 {
 	uint32_t dseg_rsp_len;		/* Data segment 1 length. */
 
 	uint32_t dataword;
-	uint32_t adapid;
-	uint32_t adapid_hi;
+	uint64_t adapid;
 	uint32_t dataword_extra;
-} fxdisc_entry_fx00_t;
+} __packed fxdisc_entry_fx00_t;
 
 struct qlafx00_tgt_node_info {
 	uint8_t tgt_node_wwpn[WWN_SIZE];
@@ -458,15 +456,16 @@ typedef struct qla_mt_iocb_rqst_fx00 {
 
 	uint32_t dataword;
 
-	uint32_t adapid;
-	uint32_t adapid_hi;
+	uint64_t adapid;
 
 	uint32_t dataword_extra;
 
-	uint32_t req_len;
+	uint16_t req_len;
+	uint16_t reserved_2;
 
-	uint32_t rsp_len;
-} qla_mt_iocb_rqst_fx00_t;
+	uint16_t rsp_len;
+	uint16_t reserved_3;
+} __packed qla_mt_iocb_rqst_fx00_t;
 
 typedef struct qla_mt_iocb_rsp_fx00 {
 	uint32_t reserved_1;
@@ -476,8 +475,7 @@ typedef struct qla_mt_iocb_rsp_fx00 {
 
 	uint32_t ioctl_data;
 
-	uint32_t adapid;
-	uint32_t adapid_hi;
+	uint64_t adapid;
 
 	uint32_t reserved_2;
 	uint32_t seq_number;
@@ -487,7 +485,7 @@ typedef struct qla_mt_iocb_rsp_fx00 {
 	int32_t res_count;
 
 	uint32_t status;
-} qla_mt_iocb_rsp_fx00_t;
+} __packed qla_mt_iocb_rsp_fx00_t;
 
 
 #define MAILBOX_REGISTER_COUNT_FX00	16

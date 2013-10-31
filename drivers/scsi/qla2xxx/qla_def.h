@@ -345,8 +345,7 @@ struct srb_iocb {
 			void *rsp_addr;
 			dma_addr_t req_dma_handle;
 			dma_addr_t rsp_dma_handle;
-			uint32_t adapter_id;
-			uint32_t adapter_id_hi;
+			uint64_t adapter_id;
 			uint32_t req_func_type;
 			uint32_t req_data;
 			uint32_t req_data_extra;
