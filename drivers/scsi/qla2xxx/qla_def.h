@@ -1196,30 +1196,6 @@ typedef struct {
 	uint8_t  reserved_3[26];
 } init_cb_t;
 
-
-typedef struct {
-	uint16_t	version;
-	uint16_t	reserved_1[13];
-	uint16_t	request_q_outpointer;
-	uint16_t	response_q_inpointer;
-	uint16_t	reserved_2[2];
-	uint16_t	response_q_length;
-	uint16_t	request_q_length;
-	uint16_t	reserved_3[2];
-	uint32_t	request_q_address[2];
-	uint32_t	response_q_address[2];
-	uint16_t	reserved_4[4];
-	uint8_t		response_q_msivec;
-	uint8_t		reserved_5[19];
-	uint16_t	interrupt_delay_timer;
-	uint16_t	reserved_6;
-	uint32_t	fwoptions1;
-	uint32_t	fwoptions2;
-	uint32_t	fwoptions3;
-	uint8_t		reserved_7[24];
-} init_cb_fx_t;
-
-
 /*
  * Get Link Status mailbox command return buffer.
  */
