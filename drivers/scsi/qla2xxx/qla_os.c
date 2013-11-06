@@ -2878,7 +2878,7 @@ probe_hw_failed:
 	}
 	if (IS_QLA8044(ha)) {
 		qla8044_idc_lock(ha);
-		qla8044_clear_drv_active(base_vha);
+		qla8044_clear_drv_active(ha);
 		qla8044_idc_unlock(ha);
 	}
 iospace_config_failed:
@@ -3041,7 +3041,7 @@ qla2x00_clear_drv_active(scsi_qla_host_t *vha)
 
 	if (IS_QLA8044(ha)) {
 		qla8044_idc_lock(ha);
-		qla8044_clear_drv_active(vha);
+		qla8044_clear_drv_active(ha);
 		qla8044_idc_unlock(ha);
 	} else if (IS_QLA82XX(ha)) {
 		qla82xx_idc_lock(ha);
