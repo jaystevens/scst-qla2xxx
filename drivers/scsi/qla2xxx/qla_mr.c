@@ -2486,7 +2486,7 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct req_que *req,
 		fstatus.ioctl_flags = le16_to_cpu(pkt->fw_iotcl_flags);
 		fstatus.ioctl_data = le32_to_cpu(pkt->dataword_r);
 		fstatus.adapid = le64_to_cpu(pkt->adapid);
-		fstatus.reserved_2 = le32_to_cpu(pkt->reserved_1);
+		fstatus.reserved_2 = le32_to_cpu(pkt->dataword_r_extra);
 		fstatus.res_count = le32_to_cpu(pkt->residuallen);
 		fstatus.status = le32_to_cpu(pkt->status);
 		fstatus.seq_number = le32_to_cpu(pkt->seq_no);
@@ -3397,7 +3397,9 @@ qlafx00_start_scsi(srb_t *sp)
 	memset(&lcmd_pkt, 0, REQUEST_ENTRY_SIZE);
 
 	lcmd_pkt.handle = MAKE_HANDLE(req->id, sp->handle);
-	lcmd_pkt.handle_hi = 0;
+	lcmd_pkt.reserved_0 = 0;
+	lcmd_pkt.port_path_ctrl = 0;
+	lcmd_pkt.reserved_1 = 0;
 	lcmd_pkt.dseg_count = cpu_to_le16(tot_dsds);
 	lcmd_pkt.tgt_idx = cpu_to_le16(sp->fcport->tgt_id);
 
@@ -3477,8 +3479,7 @@ qlafx00_tm_iocb(srb_t *sp, struct tsk_mgmt_entry_fx00 *ptm_iocb)
 	tm_iocb.entry_type = TSK_MGMT_IOCB_TYPE_FX00;
 	tm_iocb.entry_count = 1;
 	tm_iocb.handle = MAKE_HANDLE(req->id, sp->handle);
-	tm_iocb.handle_hi = 0;
-	tm_iocb.timeout = cpu_to_le16(qla2x00_get_async_timeout(vha) + 2);
+	tm_iocb.reserved_0 = 0;
 	tm_iocb.tgt_id = cpu_to_le16(sp->fcport->tgt_id);
 	tm_iocb.control_flags = cpu_to_le32(fxio->u.tmf.flags);
 	if (tm_iocb.control_flags == TCF_LUN_RESET) {

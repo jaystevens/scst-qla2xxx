@@ -22,14 +22,17 @@ typedef struct cmd_type_7_fx00 {
 	uint8_t entry_status;		/* Entry Status. */
 
 	uint32_t handle;		/* System handle. */
-	uint32_t handle_hi;
+	uint8_t reserved_0;
+	uint8_t port_path_ctrl;
+	uint16_t reserved_1;
 
 	uint16_t tgt_idx;		/* Target Idx. */
 	uint16_t timeout;		/* Command timeout. */
 #define FW_MAX_TIMEOUT		0x1999
 
 	uint16_t dseg_count;		/* Data segment count. */
-	uint16_t scsi_rsp_dsd_len;
+	uint8_t scsi_rsp_dsd_len;
+	uint8_t reserved_2;
 
 	struct scsi_lun lun;		/* LUN (LE). */
 
@@ -70,7 +73,7 @@ struct sts_entry_fx00 {
 	uint8_t entry_status;		/* Entry Status. */
 
 	uint32_t handle;		/* System handle. */
-	uint32_t handle_hi;		/* System handle. */
+	uint32_t reserved_3;		/* System handle. */
 
 	uint16_t comp_status;		/* Completion status. */
 	uint16_t reserved_0;			/* OX_ID used by the firmware. */
@@ -97,7 +100,7 @@ struct sts_entry_fx00 {
 
 struct multi_sts_entry_fx00 {
 	uint8_t entry_type;		/* Entry type. */
-	uint8_t sys_define;		/* System defined. */
+	uint8_t entry_count;		/* Entry count. */
 	uint8_t handle_count;
 	uint8_t entry_status;
 
@@ -113,15 +116,13 @@ struct tsk_mgmt_entry_fx00 {
 
 	uint32_t handle;		/* System handle. */
 
-	uint32_t handle_hi;		/* System handle. */
+	uint32_t reserved_0;		/* System handle. */
 
 	uint16_t tgt_id;		/* Target Idx. */
 
 	uint16_t reserved_1;
-
-	uint16_t delay;			/* Activity delay in seconds. */
-
-	uint16_t timeout;		/* Command timeout. */
+	uint16_t reserved_3;
+	uint16_t reserved_4;
 
 	struct scsi_lun lun;		/* LUN (LE). */
 
@@ -145,13 +146,13 @@ typedef struct abort_iocb_entry_fx00 {
 	uint8_t entry_status;		/* Entry Status. */
 
 	uint32_t handle;		/* System handle. */
-	uint32_t handle_hi;		/* System handle. */
+	uint32_t reserved_0;
 
 	uint16_t tgt_id_sts;		/* Completion status. */
 	uint16_t options;
 
 	uint32_t abort_handle;		/* System handle. */
-	uint32_t abort_handle_hi;	/* System handle. */
+	uint32_t reserved_2;
 
 	uint16_t req_que_no;
 	uint8_t reserved_1[38];
@@ -172,7 +173,7 @@ typedef struct ioctl_iocb_entry_fx00 {
 
 	uint32_t dataword_r;		/* Data word returned */
 	uint64_t adapid;		/* Adapter ID */
-	uint32_t reserved_1;
+	uint32_t dataword_r_extra;
 
 	uint32_t seq_no;
 	uint8_t reserved_2[20];
