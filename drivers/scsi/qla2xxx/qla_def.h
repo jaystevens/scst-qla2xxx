@@ -3238,6 +3238,7 @@ struct qla_hw_data {
 	struct work_struct board_disable;
 
 	struct mr_data_fx00 mr;
+	int		allow_cna_fw_dump;
 };
 
 /*
