@@ -2423,8 +2423,7 @@ qlafx00_handle_sense(srb_t *sp, uint8_t *sense_data, uint32_t par_sense_len,
 
 static void
 qlafx00_tm_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
-    struct tsk_mgmt_entry_fx00 *pkt, srb_t *sp,
-    uint16_t sstatus, uint16_t cpstatus)
+	srb_t *sp, uint16_t sstatus, uint16_t cpstatus)
 {
 	struct srb_iocb *tmf;
 
@@ -2437,12 +2436,20 @@ qlafx00_tm_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 }
 
 static void
-qlafx00_abort_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
-    struct abort_iocb_entry_fx00 *pkt)
+qlafx00_abort_iocb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 {
 	const char func[] = "ABT_IOCB";
 	srb_t *sp;
 	struct srb_iocb *abt;
+	response_t *lptr = NULL;
+	struct req_que *req = rsp->req;
+	struct abort_iocb_entry_fx00 *pkt = NULL;
+
+	lptr = rsp->ring_ptr;
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    sizeof(uint32_t));
+
+	pkt = (struct abort_iocb_entry_fx00 *)rsp->rsp_pkt;
 
 	sp = qla2x00_get_sp_from_handle(vha, func, req, pkt);
 	if (!sp)
@@ -2454,8 +2461,7 @@ qlafx00_abort_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 }
 
 static void
-qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct req_que *req,
-    struct ioctl_iocb_entry_fx00 *pkt)
+qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 {
 	const char func[] = "IOSB_IOCB";
 	srb_t *sp;
@@ -2464,6 +2470,15 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct req_que *req,
 	int res;
 	qla_mt_iocb_rsp_fx00_t fstatus;
 	uint8_t	*fw_sts_ptr;
+	response_t *lptr = NULL;
+	struct req_que *req = rsp->req;
+	struct ioctl_iocb_entry_fx00 *pkt = NULL;
+
+	lptr = rsp->ring_ptr;
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    sizeof(rsp->rsp_pkt) - (4 * sizeof(uint8_t)));
+
+	pkt = (struct ioctl_iocb_entry_fx00 *)rsp->rsp_pkt;
 
 	sp = qla2x00_get_sp_from_handle(vha, func, req, pkt);
 	if (!sp)
@@ -2520,7 +2535,7 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct req_que *req,
  * @pkt: Entry pointer
  */
 static void
-qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
+qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 {
 	srb_t		*sp;
 	fc_port_t	*fcport;
@@ -2540,8 +2555,10 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	struct req_que *req;
 	int logit = 1;
 	int res = 0;
+	response_t *lptr = NULL;
 
-	sts = (struct sts_entry_fx00 *) pkt;
+	lptr = rsp->ring_ptr;
+	sts = (struct sts_entry_fx00 *)lptr;
 
 	comp_status = le16_to_cpu(sts->comp_status);
 	scsi_status = le16_to_cpu(sts->scsi_status) & SS_MASK;
@@ -2568,7 +2585,7 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 
 	if (sp->type == SRB_TM_CMD) {
 		req->outstanding_cmds[handle] = NULL;
-		qlafx00_tm_iocb_entry(vha, req, pkt, sp,
+		qlafx00_tm_iocb_entry(vha, req, sp,
 		    scsi_status, comp_status);
 		return;
 	}
@@ -2578,6 +2595,10 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		qla2x00_process_completed_request(vha, req, handle);
 		return;
 	}
+
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    sizeof(rsp->rsp_pkt) - (4 * sizeof(uint8_t)));
+
 
 	req->outstanding_cmds[handle] = NULL;
 	cp = GET_CMD_SP(sp);
@@ -2792,7 +2813,7 @@ check_scsi_status:
  * Extended sense data.
  */
 static void
-qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
+qlafx00_status_cont_entry(struct rsp_que *rsp)
 {
 	uint8_t	sense_sz = 0;
 	struct qla_hw_data *ha = rsp->hw;
@@ -2801,6 +2822,14 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	struct scsi_cmnd *cp;
 	uint32_t sense_len;
 	uint8_t *sense_ptr;
+	response_t *lptr = NULL;
+	sts_cont_entry_t *pkt;
+
+	lptr = rsp->ring_ptr;
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    sizeof(rsp->rsp_pkt) - (4 * sizeof(uint8_t)));
+
+	pkt = (sts_cont_entry_t *)rsp->rsp_pkt;
 
 	if (!sp) {
 		ql_dbg(ql_dbg_io, vha, 0x3037,
@@ -2870,7 +2899,7 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
  * @ha: SCSI driver HA context
  */
 void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
-	struct rsp_que *rsp, void *pkt)
+	struct rsp_que *rsp)
 {
 	srb_t		*sp;
 	struct multi_sts_entry_fx00 *stsmfx;
@@ -2879,8 +2908,11 @@ void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
 	uint16_t que;
 	struct req_que *req;
 	uint32_t *handle_ptr;
+	response_t *lptr = NULL;
 
-	stsmfx = (struct multi_sts_entry_fx00 *) pkt;
+	lptr = rsp->ring_ptr;
+
+	stsmfx = (struct multi_sts_entry_fx00 *)rsp->rsp_pkt;
 
 	handle_count = stsmfx->handle_count;
 
@@ -2891,6 +2923,9 @@ void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
 		qla2xxx_wake_dpc(vha);
 		return;
 	}
+
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    handle_count * sizeof(uint32_t));
 
 	handle_ptr = (uint32_t *) &stsmfx->handles[0];
 
@@ -2933,9 +2968,15 @@ qlafx00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp,
 	uint16_t que = 0;
 	struct req_que *req = NULL;
 	int res = DID_ERROR << 16;
+	response_t *lptr = NULL;
 
 	ql_dbg(ql_dbg_async, vha, 0x507f,
 	    "type of error status in response: 0x%x\n", estatus);
+
+	lptr = rsp->ring_ptr;
+	memcpy_fromio(((void *)rsp->rsp_pkt) + 4, ((void *)lptr) + 4,
+	    sizeof(uint32_t));
+	pkt = (struct sts_entry_fx00 *)rsp->rsp_pkt;
 
 	req = ha->req_q_map[que];
 
@@ -2966,18 +3007,8 @@ void qlafx00_process_response_queue(struct scsi_qla_host *vha,
 
 	while (lreq_q_in != lreq_q_out) {
 		lptr = rsp->ring_ptr;
-		memcpy_fromio(rsp->rsp_pkt, lptr, sizeof(rsp->rsp_pkt));
+		memcpy_fromio(rsp->rsp_pkt, lptr,  4 * sizeof(uint8_t));
 		pkt = (struct sts_entry_fx00 *)rsp->rsp_pkt;
-
-		rsp->ring_index++;
-		lreq_q_out++;
-		if (rsp->ring_index == rsp->length) {
-			lreq_q_out = 0;
-			rsp->ring_index = 0;
-			rsp->ring_ptr = rsp->ring;
-		} else {
-			rsp->ring_ptr++;
-		}
 
 		if (pkt->entry_status != 0 &&
 		    pkt->entry_type != IOCTL_IOSB_TYPE_FX00) {
@@ -2989,25 +3020,23 @@ void qlafx00_process_response_queue(struct scsi_qla_host *vha,
 
 		switch (pkt->entry_type) {
 		case STATUS_TYPE_FX00:
-			qlafx00_status_entry(vha, rsp, pkt);
+			qlafx00_status_entry(vha, rsp);
 			break;
 
 		case STATUS_CONT_TYPE_FX00:
-			qlafx00_status_cont_entry(rsp, (sts_cont_entry_t *)pkt);
+			qlafx00_status_cont_entry(rsp);
 			break;
 
 		case MULTI_STATUS_TYPE_FX00:
-			qlafx00_multistatus_entry(vha, rsp, pkt);
+			qlafx00_multistatus_entry(vha, rsp);
 			break;
 
 		case ABORT_IOCB_TYPE_FX00:
-			qlafx00_abort_iocb_entry(vha, rsp->req,
-			   (abort_iocb_entry_fx00_t *)pkt);
+			qlafx00_abort_iocb_entry(vha, rsp);
 			break;
 
 		case IOCTL_IOSB_TYPE_FX00:
-			qlafx00_ioctl_iosb_entry(vha, rsp->req,
-			    (ioctl_iocb_entry_fx00_t *)pkt);
+			qlafx00_ioctl_iosb_entry(vha, rsp);
 			break;
 		default:
 			/* Type Not Supported. */
@@ -3017,6 +3046,17 @@ void qlafx00_process_response_queue(struct scsi_qla_host *vha,
 			    pkt->entry_type, pkt->entry_status);
 			break;
 		}
+
+		rsp->ring_index++;
+		lreq_q_out++;
+		if (rsp->ring_index == rsp->length) {
+			lreq_q_out = 0;
+			rsp->ring_index = 0;
+			rsp->ring_ptr = rsp->ring;
+		} else {
+			rsp->ring_ptr++;
+		}
+
 
 	}
 

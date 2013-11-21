@@ -366,6 +366,10 @@ typedef struct config_info_data config_info_data_t;
 #define QLAFX00_BAR1_BASE_ADDR_REG	0x40018
 #define QLAFX00_PEX0_WIN0_BASE_ADDR_REG	0x41824
 
+/* BIT0 - MB completion
+ * BIT1 - Response Q completion
+ * BIT2 - Async
+ */
 #define QLAFX00_INTR_MB_CMPLT		0x1
 #define QLAFX00_INTR_RSP_CMPLT		0x2
 #define QLAFX00_INTR_MB_RSP_CMPLT	0x3
