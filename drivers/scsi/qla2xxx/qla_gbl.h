@@ -620,7 +620,6 @@ extern int qla2x00_post_uevent_work(struct scsi_qla_host *, u32);
 extern int qlafx00_post_aenfx_work(struct scsi_qla_host *,  uint32_t,
     uint32_t *, int);
 extern int qlafx00_async_abt_cmd(srb_t *);
-extern int qlafx00_async_tm_cmd(fc_port_t *, uint32_t, uint32_t, uint32_t);
 extern uint32_t qlafx00_fw_state_show(struct device *,
     struct device_attribute *, char *);
 extern void qlafx00_get_host_speed(struct Scsi_Host *);
