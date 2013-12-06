@@ -2131,6 +2131,7 @@ struct ct_fdmi_hba_attributes {
 #define FDMI_PORT_SPEED_4GB		0x8
 #define FDMI_PORT_SPEED_8GB		0x10
 #define FDMI_PORT_SPEED_16GB		0x20
+#define FDMI_PORT_SPEED_32GB		0x40
 #define FDMI_PORT_SPEED_UNKNOWN		0x8000
 
 struct ct_fdmi_port_attr {
@@ -2823,6 +2824,7 @@ struct qla_hw_data {
 #define PORT_SPEED_4GB  0x03
 #define PORT_SPEED_8GB  0x04
 #define PORT_SPEED_16GB 0x05
+#define PORT_SPEED_32GB 0x06
 #define PORT_SPEED_10GB	0x13
 	uint16_t	link_data_rate;         /* F/W operating speed */
 
