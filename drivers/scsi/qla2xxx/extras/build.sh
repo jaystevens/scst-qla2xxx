@@ -45,6 +45,7 @@ BOOTDIR="/boot"
 Q_NODE=QLA2XXX
 MODULE=qla2xxx
 K_INSTALL_DIR=${K_LIBS}/extra/qlgc-qla2xxx/
+SPARSE_ARGS=""
 
 if test -f "${SLES}" ; then
 	K_INSTALL_DIR=${K_LIBS}/updates/
@@ -88,10 +89,10 @@ drv_build() {
 	# Go with build...
 	if test -f "${SLES}" ; then
 		# SuSE -------------------------------------------------------
-		make -j${K_THREADS} -C ${K_SOURCE_DIR} O=${K_BUILD_DIR} M=$PWD $1
+		make -j${K_THREADS} -C ${K_SOURCE_DIR} O=${K_BUILD_DIR} ${SPARSE_ARGS} M=$PWD $1
 	else
 		# Redhat -----------------------------------------------------
-		make -j${K_THREADS} -C ${K_BUILD_DIR} M=$PWD $1
+		make -j${K_THREADS} -C ${K_BUILD_DIR} ${SPARSE_ARGS} M=$PWD $1
 	fi
 }
 
@@ -294,6 +295,18 @@ case "$1" in
 	;;
     analyze)
 	cov_analyze.sh $2
+	;;
+    sparse)
+	which sparse 1>/dev/null 2>&1
+	if [ $? -ne 0 ]
+	then
+		echo "Cannot find sparse executable in PATH."
+		exit 1
+	fi
+	echo "${Q_NODE} -- Performing static analysis on $MODULE with sparse."
+	drv_build clean
+	SPARSE_ARGS="C=2"
+	drv_build modules
 	;;
     *)
 	set_variables
