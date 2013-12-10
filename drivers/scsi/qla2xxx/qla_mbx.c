@@ -5054,7 +5054,7 @@ qla83xx_wr_reg(scsi_qla_host_t *vha, uint32_t reg, uint32_t data)
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
 
-	if (!IS_QLA83XX(ha) || !IS_QLA27XX(ha))
+	if (!IS_QLA83XX(ha) && !IS_QLA27XX(ha))
 		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1130,
@@ -5129,7 +5129,7 @@ qla83xx_rd_reg(scsi_qla_host_t *vha, uint32_t reg, uint32_t *data)
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long retry_max_time = jiffies + (2 * HZ);
 
-	if (!IS_QLA83XX(ha) || !IS_QLA27XX(ha))
+	if (!IS_QLA83XX(ha) && !IS_QLA27XX(ha))
 		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_mbx, vha, 0x113f, "Entered %s.\n", __func__);
