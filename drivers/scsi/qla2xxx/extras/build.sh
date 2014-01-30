@@ -193,6 +193,19 @@ build_ramdisk () {
 	fi
 }
 
+run_sparse () {
+	which sparse 1>/dev/null 2>&1
+	if [ $? -ne 0 ]
+	then
+		echo "Cannot find sparse executable in PATH."
+		exit 1
+	fi
+	echo "${Q_NODE} -- Performing static analysis on $MODULE with sparse."
+	drv_build clean
+	SPARSE_ARGS="$1"
+	drv_build modules
+}
+
 ###
 #
 #
@@ -297,16 +310,10 @@ case "$1" in
 	cov_analyze.sh $2
 	;;
     sparse)
-	which sparse 1>/dev/null 2>&1
-	if [ $? -ne 0 ]
-	then
-		echo "Cannot find sparse executable in PATH."
-		exit 1
-	fi
-	echo "${Q_NODE} -- Performing static analysis on $MODULE with sparse."
-	drv_build clean
-	SPARSE_ARGS="C=2"
-	drv_build modules
+	run_sparse "C=2"
+	;;
+    sparse_endian)
+	run_sparse "C=2 CF=\"-D__CHECK_ENDIAN__\""
 	;;
     *)
 	set_variables
