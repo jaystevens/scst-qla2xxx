@@ -414,9 +414,26 @@ qla27xx_fwdt_entry_t263(struct scsi_qla_host *vha,
 				count++;
 			}
 		}
+
+	} else if (ent->t263.queue_type == T263_QUEUE_TYPE_ATIO) {
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+		if (vha->hw->ha_tgt.atio_ring) {
+			length = vha->hw->ha_tgt.atio_q_length;
+			qla27xx_insert16(0, buf, len);
+			qla27xx_insert16(length, buf, len);
+			qla27xx_insertbuf(vha->hw->ha_tgt.atio_ring,
+				length * sizeof(atio_t), buf, len);
+			count=1;
+		}
+#else
+		ql_dbg(ql_dbg_misc, vha, 0xd025,
+		    "%s: unsupported atio queue\n", __func__);
+		qla27xx_skip_entry(ent, buf);
+#endif
+
 	} else {
 		ql_dbg(ql_dbg_misc, vha, 0xd026,
-		    "%s: unknown queue %x\n", __func__, ent->t263.queue_type);
+		    "%s: unknown queue %u\n", __func__, ent->t263.queue_type);
 		qla27xx_skip_entry(ent, buf);
 	}
 
