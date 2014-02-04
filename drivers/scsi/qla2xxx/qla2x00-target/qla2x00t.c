@@ -7896,7 +7896,7 @@ static int q2t_rspq_thread_alloc(scsi_qla_host_t *vha)
 	p->num_rsp_cmds = 0;
 
 	/* Init base struct only for non-83xx. */
-	if (!IS_QLA83XX(ha))
+	if (!IS_QLA83XX(ha) && !IS_QLA27XX(ha))
 		return 0;
 
 	cpus = num_online_cpus();

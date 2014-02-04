@@ -2995,7 +2995,7 @@ que_init:
 		rsp->rsp_q_out =  &ha->mqiobase->isp25mq.rsp_q_out;
 	}
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
-	if  (ha->mqenable || IS_QLA83XX(ha)) {
+	if  (ha->mqenable || IS_QLA83XX(ha) || IS_QLA27XX(ha)) {
 		ISP_ATIO_Q_IN(base_vha) = &ha->mqiobase->isp25mq.atio_q_in;
 		ISP_ATIO_Q_OUT(base_vha) = &ha->mqiobase->isp25mq.atio_q_out;
 	} else {
