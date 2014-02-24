@@ -563,6 +563,7 @@ static const uint32_t qla8044_reg_tbl[] = {
 #define QLA8044_RDMDIO         39
 #define QLA8044_POLLWR         40
 
+#define QLA8044_TEMPLATE_CAP_OFFSET             268
 struct qla8044_minidump_template_hdr {
 	uint32_t entry_type;
 	uint32_t first_entry_offset;

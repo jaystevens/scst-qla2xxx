@@ -4371,24 +4371,59 @@ md_failed:
 	return rval;
 }
 
+static int qla82xx_is_minidump_dma_capable(struct scsi_qla_host *vha,
+				struct qla82xx_md_template_hdr *tmplt_hdr)
+{
+	struct qla_hw_data *ha = vha->hw;
+	int offset = (IS_QLA82XX(ha)) ? QLA82XX_TEMPLATE_CAP_OFFSET :
+		     QLA8044_TEMPLATE_CAP_OFFSET;
+	int rval = 1;
+	uint32_t *cap_offset;
+
+	cap_offset = (uint32_t *)((char *)tmplt_hdr + offset);
+
+	if (!(le32_to_cpu(*cap_offset) & BIT_0)) {
+		ql_dbg(ql_dbg_p3p, vha, 0xb159,
+		    "PEX DMA Not supported %d",
+		    *cap_offset);
+		rval = 0;
+	}
+
+	return rval;
+}
+
 int
 qla82xx_md_alloc(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
 	int i, k;
 	struct qla82xx_md_template_hdr *tmplt_hdr;
+	int dma_capable;
 
 	tmplt_hdr = (struct qla82xx_md_template_hdr *)ha->md_tmplt_hdr;
+	dma_capable = qla82xx_is_minidump_dma_capable(vha, tmplt_hdr);
+	vha->fw_dump_capture_mask = tmplt_hdr->capture_debug_level;
 
-	if (ql2xmdcapmask < 0x3 || ql2xmdcapmask > 0x7F) {
-		ql2xmdcapmask = tmplt_hdr->capture_debug_level & 0xFF;
-		ql_log(ql_log_info, vha, 0xb045,
-		    "Forcing driver capture mask to firmware default capture mask: 0x%x.\n",
-		    ql2xmdcapmask);
+	if (!dma_capable) {
+		if (IS_QLA82XX(ha))
+			/* Maximum dump capture that can be done with reset
+			 * timing restrictions.
+			 */
+			vha->fw_dump_capture_mask = 0x1F;
+	} else {
+		if (ql2xmdcapmask >= tmplt_hdr->capture_debug_level)
+			vha->fw_dump_capture_mask = ql2xmdcapmask;
 	}
 
+	ql_dbg(ql_dbg_p3p, vha, 0xb158,
+	    "Capture mask value parameter = %X\n"
+	    "F/W defined capture mask value = %X\n"
+	    "Forced capture mask value = %X\n",
+	    ql2xmdcapmask, tmplt_hdr->capture_debug_level,
+	    vha->fw_dump_capture_mask);
+
 	for (i = 0x2, k = 1; (i & QLA82XX_DEFAULT_CAP_MASK); i <<= 1, k++) {
-		if (i & ql2xmdcapmask)
+		if (i & vha->fw_dump_capture_mask)
 			ha->md_dump_size += tmplt_hdr->capture_size_array[k];
 	}
 
