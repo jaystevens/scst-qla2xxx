@@ -3401,7 +3401,6 @@ typedef struct scsi_qla_host {
 
 	atomic_t	vref_count;
 	struct qla8044_reset_template reset_tmplt;
-	uint32_t fw_dump_capture_mask;
 } scsi_qla_host_t;
 
 /*

@@ -3316,7 +3316,7 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 		}
 
 		if (!(entry_hdr->d_ctrl.entry_capture_mask &
-		      vha->fw_dump_capture_mask)) {
+		      ql2xmdcapmask)) {
 			entry_hdr->d_ctrl.driver_flags |=
 			    QLA82XX_DBG_SKIPPED_FLAG;
 			goto skip_nxt_entry;
