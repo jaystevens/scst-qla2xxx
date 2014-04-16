@@ -6,12 +6,18 @@
 # branches
 
 scratch_dir="/tmp"
+orig_dir=$PWD
+git_tag=1
+branches=""
 
 # All branches are passed in at the command line
-branches=$*
-
-# Assume we're at the root of the qla2xxx-v2632-devel tree
-orig_dir=$PWD
+for arg in $@
+do
+	case $arg in
+	-nt|--notag) git_tag=0;; # Don't git tag this branch
+	*) branches="${branches} $arg";;
+	esac
+done
 
 # Create branch specific release packages
 
@@ -26,7 +32,10 @@ do
 	drv_version="`grep QLA2XXX_VERSION qla_version.h | awk '{print $3}' | sed 's/\"//g'`"
 
 	# Tag this release
-	git tag $drv_version
+	if [ $git_tag -eq 1 ]
+	then
+		git tag $drv_version
+	fi
 
 	rm -fr $scratch_dir/qla2xxx-$drv_version $scratch_dir/qla2xxx-src-v$drv_version.tar.gz
 	mkdir $scratch_dir/qla2xxx-$drv_version
