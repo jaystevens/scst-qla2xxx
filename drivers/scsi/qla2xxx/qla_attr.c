@@ -683,6 +683,38 @@ qla24xx_enable_laser(scsi_qla_host_t *vha)
 	qla24xx_relinquish_gpio(vha);
 }
 
+#define PORT_0_2031 0x00201340
+#define PORT_1_2031 0x00201350
+#define LASER_ON_2031  0x01800100
+#define LASER_OFF_2031 0x01800180
+
+static void
+qla2031_laser_ctrl(scsi_qla_host_t *vha, char disable)
+{
+	uint32_t reg, data, fn;
+	struct qla_hw_data *ha = vha->hw;
+	struct device_reg_24xx __iomem *isp_reg = &ha->iobase->isp24;
+
+	/* pci func #/port # */
+	fn = (RD_REG_DWORD(&isp_reg->ctrl_status) &
+		(BIT_15|BIT_14|BIT_13|BIT_12));
+
+	fn = (fn >> 12);
+
+	if (fn & 1)
+		reg = PORT_1_2031;
+	else
+		reg = PORT_0_2031;
+
+	if (disable)
+		data = LASER_OFF_2031;
+	else
+		data = LASER_ON_2031;
+
+	qla83xx_wr_reg(vha, reg, data);
+}
+
+
 static ssize_t
 qla2x00_laser_store(struct device *cdev, struct device_attribute *attr,
 		const char *buf, size_t count)
@@ -692,7 +724,7 @@ qla2x00_laser_store(struct device *cdev, struct device_attribute *attr,
 	int val = 0;
 
 	if (!IS_QLA23XX(ha) && !IS_QLA24XX(ha) && !IS_QLA25XX(ha) &&
-		!IS_QLA83XX(ha) && !IS_QLA27XX(ha) )
+		!IS_QLA2031(ha) && !IS_QLA27XX(ha) )
 		return -EINVAL;
 
 	if (sscanf(buf, "%d", &val) != 1)
@@ -700,7 +732,8 @@ qla2x00_laser_store(struct device *cdev, struct device_attribute *attr,
 
 	switch (val) {
 	case 0:
-		if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha)) {
+		if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha) ||
+			IS_QLA2031(ha)) {
 			printk(KERN_INFO "qla2xxx[%ld]: Disabling laser.\n",
 				vha->host_no);
 		} else {
@@ -713,10 +746,13 @@ qla2x00_laser_store(struct device *cdev, struct device_attribute *attr,
 			qla2x00_disable_laser(vha);
 		else if (IS_QLA24XX(ha) || IS_QLA25XX(ha))
 			qla24xx_disable_laser(vha);
+		else if (IS_QLA2031(ha))
+			qla2031_laser_ctrl(vha, 1);
 		break;
 
 	default:
-		if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha)){
+		if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha) ||
+			IS_QLA2031(ha)) {
 			printk(KERN_INFO "qla2xxx[%ld]: Enabling laser.\n",
 				vha->host_no);
 		} else {
@@ -727,8 +763,10 @@ qla2x00_laser_store(struct device *cdev, struct device_attribute *attr,
 
 		if (IS_QLA23XX(ha))
 			qla2x00_enable_laser(vha);
-		else
+		else if (IS_QLA24XX(ha) || IS_QLA25XX(ha))
 			qla24xx_enable_laser(vha);
+		else if (IS_QLA2031(ha))
+			qla2031_laser_ctrl(vha, 0);
 		break;
 	}
 	return count;
@@ -742,9 +780,10 @@ qla2x00_laser_show(struct device *dev, struct device_attribute *attr,
 	struct qla_hw_data *ha = vha->hw;
 	int size=0, max_size=PAGE_SIZE;
 
-	if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha)) {
+	if (IS_QLA23XX(ha) || IS_QLA24XX(ha) || IS_QLA25XX(ha) ||
+		IS_QLA2031(ha)) {
 		size += scnprintf(buf+size, max_size-size,
-				"To control the laser \n");
+				"To control the laser (FC only)\n");
 		size += scnprintf(buf+size, max_size-size,
 				"\t echo 0|1 > laser \n");
 	} else
