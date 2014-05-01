@@ -6476,8 +6476,13 @@ after_find:
 			 /* Terminate the command or task management */
 			switch (prm->type) {
 			case Q2T_SESS_WORK_CMD:
-				q24_send_term_exchange(vha, NULL,
+				if (IS_FWI2_CAPABLE(ha))
+					q24_send_term_exchange(vha, NULL,
 						&prm->cmd->atio.atio7, 1);
+				else
+					q2x_send_term_exchange(vha, NULL,
+						&prm->cmd->atio.atio2x, 1);
+				q2t_free_cmd(prm->cmd);
 				break;
 
 			case Q2T_SESS_WORK_TM:
