@@ -209,6 +209,7 @@ run_sparse () {
 ###
 #
 #
+shopt -s extglob
 case "$1" in
     -h | help)
 	echo "QLogic Corporation -- driver build script"
@@ -314,6 +315,10 @@ case "$1" in
 	;;
     sparse_endian)
 	run_sparse "C=2 CF=\"-D__CHECK_ENDIAN__\""
+	;;
+    !())
+	echo "Unknown parameter $1"
+	exit 1
 	;;
     *)
 	set_variables
