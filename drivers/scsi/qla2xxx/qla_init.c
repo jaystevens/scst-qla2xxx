@@ -1846,6 +1846,10 @@ qla2x00_setup_chip(scsi_qla_host_t *vha)
 			if (ql2xexlogins)
 				ha->flags.exlogins_enabled = 1;
 
+			if (ql2xhbaheartbeat) {
+				qla2x00_start_drv_heartbeat(vha, ql2xhbaheartbeat);
+			}
+
 			rval = qla2x00_execute_fw(vha, srisc_address);
 			/* Retrieve firmware information. */
 			if (rval == QLA_SUCCESS) {

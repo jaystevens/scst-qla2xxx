@@ -694,7 +694,15 @@ skip_rio:
 		    "ISP System Error - mbx1=%xh mbx2=%xh mbx3=%xh "
 		    "mbx7=%xh.\n", mb[1], mb[2], mb[3], mbx);
 
-		ha->isp_ops->fw_dump(vha, 1);
+		if (RD_REG_WORD(&reg24->mailbox3) & 0x20) {
+			ql_log(ql_log_warn, vha, 0x5003,
+				"ISP heartbeat expired - "
+				"0x%x.\n", ha->heartbeat_interval);
+			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+			break;
+		} else {
+			ha->isp_ops->fw_dump(vha, 1);
+		}
 
 		if (IS_FWI2_CAPABLE(ha)) {
 			if (mb[1] == 0 && mb[2] == 0) {
@@ -3466,6 +3474,7 @@ qla24xx_msix_default(int irq, void *dev_id)
 			mb[1] = RD_REG_WORD(&reg->mailbox1);
 			mb[2] = RD_REG_WORD(&reg->mailbox2);
 			mb[3] = RD_REG_WORD(&reg->mailbox3);
+			mb[7] = RD_REG_WORD(&reg->mailbox7);
 			qla2x00_async_event(vha, rsp, mb);
 			break;
 		case INTR_RSP_QUE_UPDATE:

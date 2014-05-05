@@ -751,6 +751,58 @@ qla2x00_get_fw_options(scsi_qla_host_t *vha, uint16_t *fwopts)
 
 
 /*
+ * qla2x00_set_driver_heartbeat
+ *	Set driver heartbeat.
+ *
+ *	This command allows the driver to set a heartbeat interval in the f/w
+ *	which enables it to check if the driver is still functional. In the event
+ *	that the driver malfunctions, the EP83xx will turn off the laser and post
+ *	a fatal error 0x8002 will occur.
+ *
+ * Input:
+ *	ha = adapter block pointer.
+ *	interval = specified heartbeat interval
+ *	0 -- disables the driver heartbeat.
+ *
+ * Returns:
+ *	qla2x00 local function return status code.
+ *
+ * Context:
+ *	Kernel context.
+ */
+int
+qla2x00_set_driver_heartbeat(scsi_qla_host_t *vha, uint16_t interval,
+	uint16_t	opts)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x102f,
+	    "Entered %s.\n", __func__);
+
+	mcp->mb[0] = MBC_SET_HEARTBEAT;
+	mcp->mb[1] = interval;
+	mcp->mb[2] = opts;
+	mcp->out_mb = MBX_2|MBX_1|MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+	if (rval != QLA_SUCCESS) {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_mbx, vha, 0x1030,
+		    "Failed=%x (%x/%x).\n", rval, mcp->mb[0], mcp->mb[1]);
+	} else {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1031,
+		    "Done %s.\n", __func__);
+	}
+
+	return rval;
+}
+
+/*
  * qla2x00_set_fw_options
  *	Set firmware options.
  *

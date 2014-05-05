@@ -1060,6 +1060,11 @@ typedef struct {
 #define MBC_WRITE_MPI_REGISTER		0x01    /* Write MPI Register. */
 
 /*
+ * ISP83xx mailbox commands
+ */
+#define MBC_SET_HEARTBEAT		0x5B    /* Set Driver Heartbeat. */
+
+/*
  * ISP8044 mailbox commands
  */
 #define MBC_SET_GET_ETH_SERDES_REG	0x150
@@ -3572,6 +3577,12 @@ struct qla_hw_data {
 	uint16_t        zio_mode;
 	uint16_t        zio_timer;
 
+	/* Needed for HEARTBEAT */
+	int             heartbeat_retries;
+	uint16_t        heartbeat_active;
+	uint16_t        heartbeat_interval;
+	uint64_t   heartbeat_count;
+
 	struct qla_msix_entry *msix_entries;
 
 	struct list_head        vp_list;        /* list of VP */
@@ -3647,6 +3658,13 @@ struct qla_hw_data {
 	struct work_struct idc_state_handler;
 	struct work_struct nic_core_unrecoverable;
 	struct work_struct board_disable;
+
+	/* HEARTBEAT workqueue */
+#if LINUX_VERSION_CODE != KERNEL_VERSION(2, 6, 18)
+	struct delayed_work driver_heartbeat_wk;
+#else
+	struct work_struct driver_heartbeat_wk;
+#endif
 
 	struct mr_data_fx00 mr;
 	int		allow_cna_fw_dump;

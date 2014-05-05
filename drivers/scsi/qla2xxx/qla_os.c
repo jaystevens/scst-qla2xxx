@@ -35,6 +35,12 @@ char qla2x00_version_str[40];
  */
 struct qla_tgt_data qla_target;
 
+#if LINUX_VERSION_CODE != KERNEL_VERSION(2, 6, 18)
+void qla2x00_driver_heartbeat(struct delayed_work *work);
+#else
+void qla2x00_driver_heartbeat(void *work);
+#endif
+
 /*
  * List of ha's and mutex protecting it.
  */
@@ -283,6 +289,12 @@ MODULE_PARM_DESC(ql2x_prli_it_ctl,
 		"0(Default)- normal; 0x20-Initiator; 0x10-Target; 0x30-both");
 #endif
 
+int ql2xhbaheartbeat = 0;
+module_param(ql2xhbaheartbeat, uint, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(ql2xhbaheartbeat,
+		"Enable/Disable of HBA heartbeat."
+		"0(Default) - Disabled or the heatbeat interval seconds.");
+
 QLA_QRATE_DECLARE_MOD_PARAM;
 
 /*
@@ -383,6 +395,44 @@ qla2x00_stop_timer(scsi_qla_host_t *vha)
 {
 	del_timer_sync(&vha->timer);
 	vha->timer_active = 0;
+}
+
+void
+qla2x00_start_drv_heartbeat(scsi_qla_host_t *vha, unsigned long interval)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	ha->heartbeat_active = 0;
+	ha->heartbeat_count = 0;
+	ha->heartbeat_retries = 0;
+	/* Not FCoE and 24xx and 25xx */
+	if ( !(IS_QLA24XX(ha) || IS_QLA2432(ha) ||
+		IS_QLA25XX(ha) || IS_QLA2031(ha) || IS_QLA27XX(ha)) ) {
+		return;
+	}
+
+	if (ha->current_topology == ISP_CFG_FL)
+		return;
+
+	ha->heartbeat_interval = (interval < 4096 && interval >= 10 )? interval : 10;
+	ha->heartbeat_active = 1;
+	ql_log(ql_log_warn, vha, 0x015c,
+	    "Setting Driver heartbeat to (%u) secs.\n",
+		ha->heartbeat_interval);
+	schedule_delayed_work(&ha->driver_heartbeat_wk,
+			(ha->heartbeat_interval*HZ));
+}
+
+static inline void
+qla2x00_stop_drv_heartbeat(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	ql_log(ql_log_warn, vha, 0x015c,
+		"%s: ha %p \n",__func__, ha);
+
+	ha->heartbeat_active = 0;
+	cancel_delayed_work(&ha->driver_heartbeat_wk);
 }
 
 static int qla2x00_do_dpc(void *data);
@@ -2874,6 +2924,14 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	init_completion(&ha->dcbx_comp);
 	init_completion(&ha->lb_portup_comp);
 
+#if LINUX_VERSION_CODE != KERNEL_VERSION(2, 6, 18)
+	INIT_DELAYED_WORK(&ha->driver_heartbeat_wk,
+		(void (*)(struct work_struct *))qla2x00_driver_heartbeat);
+#else
+	INIT_WORK(&ha->driver_heartbeat_wk, qla2x00_driver_heartbeat,
+		&ha->driver_heartbeat_wk);
+#endif
+
 	set_bit(0, (unsigned long *) ha->vp_idx_map);
 
 	qla2x00_config_dma_addressing(ha);
@@ -3453,6 +3511,9 @@ qla2x00_remove_one(struct pci_dev *pdev)
 		qla_target.tgt_host_action(base_vha, REMOVE_TARGET);
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
+	if (ha->heartbeat_active)
+		qla2x00_stop_drv_heartbeat(base_vha);
+
 	qla2x00_delete_all_vps(ha, base_vha);
 
 	if (IS_QLA8031(ha)) {
@@ -3466,6 +3527,9 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	qla2x00_abort_all_cmds(base_vha, DID_NO_CONNECT << 16);
 
 	qla2x00_dfs_remove(base_vha);
+
+	if (ha->heartbeat_active)
+		qla2x00_stop_drv_heartbeat(base_vha);
 
 	qla84xx_put_chip(base_vha);
 
@@ -3510,6 +3574,9 @@ qla2x00_free_device(scsi_qla_host_t *vha)
 	struct qla_hw_data *ha = vha->hw;
 
 	qla2x00_abort_all_cmds(vha, DID_NO_CONNECT << 16);
+
+	if (ha->heartbeat_active)
+		qla2x00_stop_drv_heartbeat(vha);
 
 	/* Disable timer */
 	if (vha->timer_active)
@@ -5270,6 +5337,9 @@ qla2x00_disable_board_on_pci_error(struct work_struct *work)
 
 	qla84xx_put_chip(base_vha);
 
+	if (ha->heartbeat_active)
+		qla2x00_stop_drv_heartbeat(base_vha);
+
 	if (base_vha->timer_active)
 		qla2x00_stop_timer(base_vha);
 
@@ -5306,6 +5376,52 @@ qla2x00_disable_board_on_pci_error(struct work_struct *work)
 	pci_disable_pcie_error_reporting(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
+
+}
+
+#if LINUX_VERSION_CODE != KERNEL_VERSION(2, 6, 18)
+void qla2x00_driver_heartbeat(struct delayed_work *work)
+#else
+void qla2x00_driver_heartbeat(void *work)
+#endif
+{
+	int interval = 0;
+	int rval;
+	struct qla_hw_data *ha = container_of(work, struct qla_hw_data,
+	    driver_heartbeat_wk);
+	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
+
+
+	ha->heartbeat_count++;
+
+	ql_dbg(ql_dbg_timer, base_vha, 0x015c,
+		"Send DD heartbeat to F/W %llu count, curtime %lu sec\n",
+		ha->heartbeat_count, (jiffies/HZ));
+
+	if (!ha->heartbeat_active) {
+		/* interval=0 means turn off heartbeat */
+		rval = qla2x00_set_driver_heartbeat(base_vha, 0, 0);
+		qla2x00_stop_drv_heartbeat(base_vha);
+	} else {
+		/* Alway cut driver interval in half, so we timeout before F/W */
+		rval = qla2x00_set_driver_heartbeat(base_vha,
+			ha->heartbeat_interval, 0);
+
+		if (rval != QLA_SUCCESS) {
+			/* stop trying after 3 retries */
+			if ((ha->heartbeat_count > 1) &&
+				(ha->heartbeat_retries > 3))
+				qla2x00_stop_drv_heartbeat(base_vha);
+			else
+				schedule_delayed_work(&ha->driver_heartbeat_wk, HZ);
+
+			ha->heartbeat_retries++;
+		} else {
+			interval = ha->heartbeat_interval / 2;
+			schedule_delayed_work(&ha->driver_heartbeat_wk,
+					(interval*HZ));
+		}
+	}
 
 }
 

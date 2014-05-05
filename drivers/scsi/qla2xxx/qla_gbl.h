@@ -130,6 +130,7 @@ extern uint ql2x_tgt_exchg_cnt_percent;
 #endif
 extern int ql2xexlogins;
 extern int ql2x_prli_it_ctl;
+extern int ql2xhbaheartbeat;
 
 extern int qla2x00_loop_reset(scsi_qla_host_t *);
 extern void qla2x00_abort_all_cmds(scsi_qla_host_t *, int);
@@ -181,6 +182,8 @@ extern int
 qla2x00_set_exlogins_buffer(scsi_qla_host_t *);
 extern void
 qla2x00_free_exlogin_buffer(struct qla_hw_data *);
+extern void qla2x00_start_drv_heartbeat(scsi_qla_host_t *, unsigned long);
+extern int qla2x00_set_driver_heartbeat(scsi_qla_host_t *, uint16_t,uint16_t);
 
 /*
  * Global Functions in qla_mid.c source file.
