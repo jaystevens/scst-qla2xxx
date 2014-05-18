@@ -5536,9 +5536,6 @@ static void q2x_send_busy(scsi_qla_host_t *vha, atio_entry_t *atio)
 	ctio->entry_count = 1;
 	ctio->handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
 	ctio->scsi_status = __constant_cpu_to_le16(SAM_STAT_BUSY);
-	ctio->residual = atio->data_length;
-	if (ctio->residual != 0)
-		ctio->scsi_status |= SS_RESIDUAL_UNDER;
 
 	/* Set IDs */
 	SET_TARGET_ID(ha, ctio->target, GET_TARGET_ID(ha, atio));
@@ -5614,10 +5611,6 @@ static void q24_send_busy(scsi_qla_host_t *vha, atio7_entry_t *atio,
 	 */
 	ctio->ox_id = swab16(atio->fcp_hdr.ox_id);
 	ctio->scsi_status = cpu_to_le16(status);
-	ctio->residual = get_unaligned((uint32_t *)
-			&atio->fcp_cmnd.add_cdb[atio->fcp_cmnd.add_cdb_len]);
-	if (ctio->residual != 0)
-		ctio->scsi_status |= SS_RESIDUAL_UNDER;
 
 	TRACE_BUFFER("CTIO7 BUSY packet data", ctio, REQUEST_ENTRY_SIZE);
 
