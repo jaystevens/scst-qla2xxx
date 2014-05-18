@@ -3280,6 +3280,7 @@ static int __q24_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 		q24_init_ctio_ret_entry(pkt, &prm);
 
 	cmd->state = Q2T_STATE_PROCESSED;	/* Mid-level is done processing */
+	cmd->cmd_sent_to_fw = 1;
 
 	TRACE_BUFFER("Xmitting CTIO7", pkt, REQUEST_ENTRY_SIZE);
 
@@ -3361,6 +3362,7 @@ static int __q2t_rdy_to_xfer(struct q2t_cmd *cmd)
 	}
 
 	cmd->state = Q2T_STATE_NEED_DATA;
+	cmd->cmd_sent_to_fw = 1;
 
 	TRACE_BUFFER("Xfering", p, REQUEST_ENTRY_SIZE);
 
@@ -3538,7 +3540,8 @@ out_unlock:
 	if (!ha_locked)
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	if (do_tgt_cmd_done) {
+	if (cmd && ((cmd->state != Q2T_STATE_ABORTED) ||
+			!cmd->cmd_sent_to_fw)) {
 		if (!ha_locked && !in_interrupt())
 			scst_tgt_cmd_done(&cmd->scst_cmd, SCST_CONTEXT_DIRECT);
 		else
@@ -3880,6 +3883,7 @@ qlb_out_free:
 #endif /* QLT_LOOP_BACK */
 
 	scst_cmd = &cmd->scst_cmd;
+	cmd->cmd_sent_to_fw = 0;
 
 	if (cmd->sg_mapped)
 		q2t_unmap_sg(vha, cmd);

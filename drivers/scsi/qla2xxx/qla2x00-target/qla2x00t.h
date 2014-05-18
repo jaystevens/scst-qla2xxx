@@ -220,6 +220,7 @@ struct q2t_cmd {
 	unsigned int free_sg:1;
 	unsigned int aborted:1; /* Needed in case of SRR */
 	unsigned int write_data_transferred:1;
+	unsigned int cmd_sent_to_fw:1;
 #ifdef QLT_LOOP_BACK
 	unsigned int qlb_io:1;
 #endif /* QLT_LOOP_BACK */
