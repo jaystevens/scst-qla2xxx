@@ -1818,6 +1818,7 @@ out:
 /*
  * pha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
  */
+#if 0
 static void q24_send_resp_ctio(scsi_qla_host_t *ha, struct q2t_cmd *cmd,
 	uint8_t scsi_status, uint8_t sense_key, uint8_t asc, uint8_t ascq)
 {
@@ -1873,7 +1874,7 @@ out:
 	TRACE_EXIT();
 	return;
 }
-
+#endif 
 
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
