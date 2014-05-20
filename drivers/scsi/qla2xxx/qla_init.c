@@ -732,6 +732,11 @@ qla2x00_initialize_adapter(scsi_qla_host_t *vha)
 			return (rval);
 	}
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	if (qla_tgt_mode_enabled(vha) && qla_target.tgt_init_term_exchange)
+		qla_target.tgt_init_term_exchange(vha);
+#endif
+
 	if (IS_QLA84XX(ha)) {
 		ha->cs84xx = qla84xx_get_chip(vha);
 		if (!ha->cs84xx) {
@@ -5085,6 +5090,12 @@ qla2x00_restart_isp(scsi_qla_host_t *vha)
 		/* if no cable then assume it's good */
 		if ((vha->device_flags & DFLG_NO_CABLE))
 			status = 0;
+
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+		if (qla_tgt_mode_enabled(vha) && 
+			qla_target.tgt_init_term_exchange)
+			qla_target.tgt_init_term_exchange(vha);
+#endif
 	}
 	return (status);
 }

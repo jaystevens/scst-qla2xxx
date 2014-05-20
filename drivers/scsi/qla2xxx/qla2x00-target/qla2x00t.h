@@ -234,6 +234,8 @@ struct q2t_cmd {
 	unsigned int aborted:1; /* Needed in case of SRR */
 	unsigned int write_data_transferred:1;
 	unsigned int cmd_sent_to_fw:1;
+	unsigned int q_full:1;
+	unsigned int term_exchg:1;
 #ifdef QLT_LOOP_BACK
 	unsigned int qlb_io:1;
 #endif /* QLT_LOOP_BACK */
@@ -259,6 +261,7 @@ struct q2t_cmd {
 		atio7_entry_t atio7;
 		atio_entry_t atio2x;
 	} __packed atio;
+	struct list_head cmd_list;
 
 #ifdef QLA_RSPQ_NOLOCK
 	struct list_head list_entry;	// rx_pendq_list
@@ -378,4 +381,9 @@ qlb_loop_back_io(struct scsi_qla_host *vha, struct q2t_cmd *cmd)
 #endif /* QLT_LOOP_BACK */
 
 extern void q2t_host_reset_handler(struct qla_hw_data *ha);
+extern int q2t_free_leak_exchange(struct scsi_qla_host *);
+extern void q2t_alloc_term_exchange(struct scsi_qla_host *, atio7_entry_t *);
+extern int q2t_free_qfull_cmds(struct scsi_qla_host *);
+extern void q2t_init_term_exchange(struct scsi_qla_host *);
+
 #endif /* __QLA2X00T_H */

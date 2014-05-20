@@ -2964,6 +2964,9 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	pci_set_drvdata(pdev, base_vha);
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	INIT_LIST_HEAD(&ha->ha_tgt.q_full_list);
+	spin_lock_init(&ha->ha_tgt.q_full_lock);
+
 	init_completion(&ha->ha_tgt.pass_thru_intr_comp);
 	set_bit(0, (unsigned long *)ha->vp_idx_map);
 	mutex_init(&base_vha->vha_tgt.tgt_mutex);
