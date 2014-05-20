@@ -808,6 +808,7 @@ struct qla_tgt_data {
 	void (*tgt83_atio_pkt)(scsi_qla_host_t *ha, response_t *pkt);
 #endif
 	int (*tgt_get_sess_login_state)(scsi_qla_host_t *vha, fc_port_t *fcport);
+	void (*tgt_host_reset_handler)(struct qla_hw_data *ha);
 
 };
 

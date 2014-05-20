@@ -233,6 +233,7 @@ struct q2t_cmd {
 	uint32_t tag;
 	dma_addr_t dma_handle;
 	enum dma_data_direction dma_data_direction;
+	uint32_t reset_count;
 
 	uint16_t loop_id;		    /* to save extra sess dereferences */
 	struct q2t_tgt *tgt;		    /* to save extra sess dereferences */
@@ -273,6 +274,7 @@ struct q2t_sess_work_param {
 struct q2t_mgmt_cmd {
 	struct q2t_sess *sess;
 	unsigned int flags;
+	uint32_t reset_count;
 #define Q24_MGMT_SEND_NACK	1
 	union {
 		atio7_entry_t atio7;
@@ -357,4 +359,5 @@ qlb_loop_back_io(struct scsi_qla_host *vha, struct q2t_cmd *cmd)
 }
 #endif /* QLT_LOOP_BACK */
 
+extern void q2t_host_reset_handler(struct qla_hw_data *ha);
 #endif /* __QLA2X00T_H */

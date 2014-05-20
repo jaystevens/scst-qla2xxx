@@ -165,6 +165,8 @@ static void q24_send_busy(scsi_qla_host_t *vha, atio7_entry_t *atio,
 
 void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt);
 void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt);
+static void q2t_abort_cmd_on_host_reset(struct scsi_qla_host *vha,
+    struct q2t_cmd *cmd);
 
 #ifndef CONFIG_SCST_PROC
 
@@ -474,6 +476,9 @@ static inline void q2t_exec_queue(scsi_qla_host_t *vha)
 /* pvha->hardware_lock supposed to be held on entry */
 static inline request_t *q2t_req_pkt(scsi_qla_host_t *vha)
 {
+	if (qla2x00_reset_active(vha))
+		return NULL;
+
 	return qla2x00_req_pkt(vha);
 }
 
@@ -752,6 +757,7 @@ static int q2t_target_detect(struct scst_tgt_template *tgtt)
 		.tgt83_atio_pkt = q83_atio_pkt,
 #endif
 		.tgt_get_sess_login_state = q2t_get_sess_login_state,
+		.tgt_host_reset_handler = q2t_host_reset_handler,
 	};
 
 	TRACE_ENTRY();
@@ -2098,6 +2104,7 @@ static int __q24_handle_abts(scsi_qla_host_t *vha, abts24_recv_entry_t *abts,
 
 	mcmd->sess = sess;
 	memcpy(&mcmd->orig_iocb.abts, abts, sizeof(mcmd->orig_iocb.abts));
+	mcmd->reset_count = vha->hw->chip_reset;
 
 	res = scst_rx_mgmt_fn_tag(sess->scst_sess, SCST_ABORT_TASK, tag,
 		SCST_ATOMIC, mcmd);
@@ -2334,6 +2341,19 @@ static void q2t_task_mgmt_fn_done(struct scst_mgmt_cmd *scst_mcmd)
 	ha = vha->hw;
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
+	if (qla2x00_reset_active(vha) || mcmd->reset_count != ha->chip_reset) {
+		/*
+		 * Either a chip reset is active or this request was from
+		 * previous life, just abort the processing.
+		 */
+		TRACE_DBG("RESET-TMR active/old-count/new-count = %d/%d/%d.\n",
+		    qla2x00_reset_active(vha), mcmd->reset_count,
+		    ha->chip_reset);
+		mempool_free(mcmd, q2t_mgmt_cmd_mempool);
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		return;
+	}
+
 	if (IS_FWI2_CAPABLE(ha)) {
 		if (mcmd->flags == Q24_MGMT_SEND_NACK) {
 			q24_send_notify_ack(vha,
@@ -3228,6 +3248,20 @@ static int __q24_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 	vha = prm.tgt->ha;
 	ha = vha->hw;
 
+	if (qla2x00_reset_active(vha) || cmd->reset_count != ha->chip_reset) {
+		/*
+		 * Either a chip reset is active or this request was from
+		 * previous life, just abort the processing.
+		 */
+		cmd->state = Q2T_STATE_PROCESSED;
+		q2t_abort_cmd_on_host_reset(vha, cmd);
+		TRACE_DBG("RESET-RSP active/old-count/new-count = %d/%d/%d.\n",
+		    qla2x00_reset_active(vha), cmd->reset_count,
+		    ha->chip_reset);
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		return 0;
+	}
+
 	res = q24_build_ctio_pkt(&prm);
 	if (unlikely(res != SCST_TGT_RES_SUCCESS))
 		goto out_unmap_unlock;
@@ -3337,6 +3371,20 @@ static int __q2t_rdy_to_xfer(struct q2t_cmd *cmd)
 
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
+
+	if (qla2x00_reset_active(vha) || cmd->reset_count != ha->chip_reset) {
+		/*
+		 * Either a chip reset is active or this request was from
+		 * previous life, just abort the processing.
+		 */
+		cmd->state = Q2T_STATE_NEED_DATA; 
+		q2t_abort_cmd_on_host_reset(vha, cmd);
+		TRACE_DBG("RESET-XFR active/old-count/new-count = %d/%d/%d.\n",
+		    qla2x00_reset_active(vha), cmd->reset_count,
+		    ha->chip_reset);
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		return 0;
+	}
 
 	/* Does F/W have an IOCBs for this request */
 	res = q2t_check_reserve_free_req(vha, prm.req_cnt);
@@ -3799,6 +3847,87 @@ static struct q2t_cmd *q2t_ctio_to_cmd(scsi_qla_host_t *vha, uint32_t handle,
 out:
 	return cmd;
 }
+
+/* hardware_lock should be held by caller. */
+static void
+q2t_abort_cmd_on_host_reset(struct scsi_qla_host *vha,
+    struct q2t_cmd *cmd)
+{
+	enum scst_exec_context context;
+
+#ifdef CONFIG_QLA_TGT_DEBUG_WORK_IN_THREAD
+	context = SCST_CONTEXT_THREAD;
+#else
+	context = SCST_CONTEXT_TASKLET;
+#endif
+
+	TRACE_ENTRY();
+
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(vha, cmd);
+
+
+	if (cmd->state == Q2T_STATE_PROCESSED) {
+		    TRACE_DBG("HOST-ABORT: ox_id=%04x, state=PROCESSED.\n",
+			swab16(cmd->atio.atio7.fcp_hdr.ox_id));
+	} else if (cmd->state == Q2T_STATE_NEED_DATA) {
+		int rx_status = SCST_RX_STATUS_SUCCESS;
+		cmd->write_data_transferred = 0;
+		cmd->state = Q2T_STATE_DATA_IN;
+
+		TRACE_DBG( "HOST-ABORT: ox_id=%04x, state=DATA_IN.\n",
+		    swab16(cmd->atio.atio7.fcp_hdr.ox_id));
+
+		TRACE_DBG("Data received, context %x, rx_status %d",
+		      context, rx_status);
+		scst_rx_data(&cmd->scst_cmd, rx_status, context);
+		return;
+	} else if (cmd->state == Q2T_STATE_ABORTED) {
+		TRACE_DBG("HOST-ABORT: ox_id=%04x, state=ABORTED.\n",
+		    swab16(cmd->atio.atio7.fcp_hdr.ox_id));
+	} else {
+		TRACE_DBG( "HOST-ABORT: ox_id=%04x, state=BAD(%d).\n",
+		        swab16(cmd->atio.atio7.fcp_hdr.ox_id),
+			cmd->state);
+		dump_stack();
+	}
+
+	scst_tgt_cmd_done(&cmd->scst_cmd, context);
+}
+
+void
+q2t_host_reset_handler(struct qla_hw_data *ha)
+{
+	struct q2t_cmd *cmd;
+	unsigned long flags;
+	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
+	scsi_qla_host_t *vha = NULL;
+	struct q2t_tgt *tgt = base_vha->vha_tgt.tgt;
+	uint32_t i;
+
+#if 0
+	if (!base_vha->hw->tgt.tgt_ops)
+		return;
+#endif
+
+	if (!tgt || qla_ini_mode_enabled(base_vha))
+		return;
+
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	for (i = 1; i < DEFAULT_OUTSTANDING_COMMANDS + 1; i++) {
+		cmd = q2t_get_cmd(base_vha, i);
+		if (!cmd)
+			continue;
+		/* ha->tgt.cmds entry is cleared by qlt_get_cmd. */
+		vha = cmd->tgt->ha;
+		q2t_abort_cmd_on_host_reset(vha, cmd);
+	}
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+}
+
+/*
+ * ha->hardware_lock supposed to be held on entry. Might drop it, then reaquire
+ */
 
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
@@ -4344,6 +4473,7 @@ static int q2t_send_cmd_to_scst(scsi_qla_host_t *vha, atio_t *atio)
 
 	cmd->state = Q2T_STATE_NEW;
 	cmd->tgt = vha->vha_tgt.tgt;
+	cmd->reset_count = vha->hw->chip_reset;
 
 	if (IS_FWI2_CAPABLE(ha)) {
 		atio7_entry_t *a = (atio7_entry_t *)atio;
@@ -4448,6 +4578,7 @@ static int q2t_issue_task_mgmt(struct q2t_sess *sess, uint8_t *lun,
 			sizeof(mcmd->orig_iocb.notify_entry));
 	}
 	mcmd->flags = flags;
+	mcmd->reset_count = sess->tgt->ha->hw->chip_reset;
 
 	switch (fn) {
 	case Q2T_CLEAR_ACA:
@@ -4615,6 +4746,7 @@ static int __q2t_abort_task(scsi_qla_host_t *vha, notify_entry_t *iocb,
 	mcmd->sess = sess;
 	memcpy(&mcmd->orig_iocb.notify_entry, iocb,
 		sizeof(mcmd->orig_iocb.notify_entry));
+	mcmd->reset_count = vha->hw->chip_reset;
 
 	rc = scst_rx_mgmt_fn_tag(sess->scst_sess, SCST_ABORT_TASK,
 		le16_to_cpu(iocb->seq_id), SCST_ATOMIC, mcmd);

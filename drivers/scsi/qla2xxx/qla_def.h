@@ -3640,6 +3640,7 @@ struct qla_hw_data {
 	int		allow_cna_fw_dump;
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	uint32_t chip_reset;
 	struct qlt_hw_data ha_tgt;
 
 #ifdef QLA_RSPQ_NOLOCK
