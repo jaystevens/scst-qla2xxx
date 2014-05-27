@@ -2657,7 +2657,9 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 			qla2x00_port_logout(fcport->vha, fcport);
 	}
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) && !defined(CONFIG_SUSE_KERNEL)
 	scsi_target_unblock(&rport->dev, SDEV_BLOCK);
+#endif
 #endif
 }
 
