@@ -1,11 +1,10 @@
 /*
  *  qla2x00t.h
  *
- *  Copyright (C) 2004 - 2012 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2014 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2006 Nathaniel Clark <nate@misrule.us>
- *  Copyright (C) 2006 - 2010 ID7 Ltd.
- *  Copyright (C) 2010 - 2011 SCST Ltd.
+ *  Copyright (C) 2007 - 2014 Fusion-io, Inc.
  *
  *  QLogic 22xx/23xx/24xx/25xx FC target driver.
  *
@@ -147,7 +146,10 @@ struct q2t_tgt {
 	/* Count of sessions refering q2t_tgt. Protected by hardware_lock. */
 	int sess_count;
 
-	/* Protected by hardware_lock. Addition also protected by tgt_mutex. */
+	/*
+	 * Protected by hardware_lock. Adding new sessions (not undelete)
+	 * also protected by tgt_mutex.
+	 */
 	struct list_head sess_list;
 
 	/* Protected by hardware_lock */
