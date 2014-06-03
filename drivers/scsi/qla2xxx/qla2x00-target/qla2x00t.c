@@ -836,10 +836,11 @@ static int q2t_unreg_sess(struct q2t_sess *sess)
 	sBUG_ON(sess->sess_ref != 0);
 
 	TRACE_MGMT_DBG("Deleting sess %p from tgt %p", sess, sess->tgt);
-	list_del_init(&sess->sess_list_entry);
+	// list_del_init(&sess->sess_list_entry);
+	sBUG_ON(list_entry_in_list(&sess->sess_list_entry));
 
-	if (sess->deleted)
-		list_del(&sess->del_list_entry);
+	// if (sess->deleted)
+		// list_del(&sess->del_list_entry);
 
 	PRINT_INFO("qla2x00t(%ld): %ssession for loop_id %d deleted",
 		sess->tgt->ha->host_no, sess->local ? "local " : "",
@@ -993,16 +994,17 @@ out:
 static int q2t_close_session(struct scst_session *scst_sess)
 {
 	struct q2t_sess *sess = scst_sess_get_tgt_priv(scst_sess);
-	scsi_qla_host_t *ha = sess->tgt->ha;
-	scsi_qla_host_t *pha = to_qla_parent(ha);
+	struct q2t_tgt *tgt = sess->tgt;
+	scsi_qla_host_t *vha = tgt->ha;
+	struct	qla_hw_data	*ha = vha->hw;
 	unsigned long flags;
 
-	spin_lock_irqsave(&pha->hardware_lock, flags);
-	if (list_entry_in_list(&sess->sess_list_entry)) {
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	if (list_empty(&sess->sess_list_entry)) {
 		TRACE_MGMT_DBG("Force closing sess %p", sess);
-		q2t_sess_del(sess);
+		q2t_sess_put(sess);
 	}
-	spin_unlock_irqrestore(&pha->hardware_lock, flags);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	return 0;
 }
@@ -1055,7 +1057,7 @@ static void q2t_alloc_session_done(struct scst_session *scst_sess,
 
 	TRACE_ENTRY();
 
-	spin_lock_irqsave(&pha->hardware_lock, flags);
+	spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (result != 0) {
 		PRINT_INFO("qla2x00t(%ld): Session initialization failed",
@@ -1064,11 +1066,9 @@ static void q2t_alloc_session_done(struct scst_session *scst_sess,
 			q2t_sess_del(sess);
 	}
 
-		q2t_sess_put(sess);
+	q2t_sess_put(sess);
 
-		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-	}
-
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	TRACE_EXIT();
 	return;
 }
@@ -1430,7 +1430,7 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 	}
 
 	/* Lock here to eliminate creating sessions for being stopped target */
-	spin_lock_irq(&pha->hardware_lock);
+	spin_lock_irq(&ha->hardware_lock);
 
 	if (tgt->tgt_stop)
 		goto out_free_sess_wwn;
@@ -1470,7 +1470,7 @@ out:
 	return sess;
 
 out_free_sess_wwn:
-	spin_unlock_irq(&pha->hardware_lock);
+	spin_unlock_irq(&ha->hardware_lock);
 
 	kfree(wwn_str);
 	/* go through */
@@ -2808,7 +2808,7 @@ static int q2t_pre_xmit_response(struct q2t_cmd *cmd,
 	scsi_qla_host_t *vha = tgt->ha;
 	struct qla_hw_data *ha = vha->hw;
 	uint16_t full_req_cnt;
-	struct scst_cmd *scst_cmd = cmd->scst_cmd;
+	struct scst_cmd *scst_cmd = &cmd->scst_cmd;
 
 	TRACE_ENTRY();
 
@@ -3883,7 +3883,7 @@ qlb_out_free:
 	}
 #endif /* QLT_LOOP_BACK */
 
-	scst_cmd = cmd->scst_cmd;
+	scst_cmd = &cmd->scst_cmd;
 
 	if (cmd->sg_mapped)
 		q2t_unmap_sg(vha, cmd);
@@ -3995,7 +3995,7 @@ static void q2x_ctio_completion(scsi_qla_host_t *vha, uint32_t handle)
 /* ha->hardware_lock supposed to be held on entry */
 static int q2x_do_send_cmd_to_scst(struct q2t_cmd *cmd)
 {
-	int res = 0;
+	int res;
 	struct q2t_sess *sess = cmd->sess;
 	uint16_t lun;
 	atio_entry_t *atio = &cmd->atio.atio2x;
@@ -4069,7 +4069,7 @@ out:
 /* ha->hardware_lock supposed to be held on entry */
 static int q24_do_send_cmd_to_scst(struct q2t_cmd *cmd)
 {
-	int res = 0;
+	int res;
 	struct q2t_sess *sess = cmd->sess;
 	atio7_entry_t *atio = &cmd->atio.atio7;
 	scst_data_direction dir;
@@ -7366,7 +7366,7 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 
 	cmd->status = status;
 
-	scst_cmd = cmd->scst_cmd;
+	scst_cmd = &cmd->scst_cmd;
 
 	if (cmd->sg_mapped)
 		q2t_unmap_sg(vha, cmd);
@@ -7452,7 +7452,7 @@ static void q2t_83xx_ctio_completion(struct q2t_cmd *cmd)
 	context = SCST_CONTEXT_TASKLET;
 #endif
 
-	scst_cmd = cmd->scst_cmd;
+	scst_cmd = &cmd->scst_cmd;
 
 	if (cmd->state == Q2T_STATE_PROCESSED) {
 		TRACE_DBG("Command %p finished", cmd);

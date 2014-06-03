@@ -214,7 +214,6 @@ struct q2t_sess {
 struct q2t_cmd {
 	struct q2t_sess *sess;
 	int state;
-	struct scst_cmd *scst_cmd;
 
 	unsigned int conf_compl_supported:1;/* to save extra sess dereferences */
 	unsigned int sg_mapped:1;
@@ -240,13 +239,14 @@ struct q2t_cmd {
 	union {
 		atio7_entry_t atio7;
 		atio_entry_t atio2x;
-	} __attribute__((packed)) atio;
+	} __packed atio;
 
 #ifdef QLA_RSPQ_NOLOCK
 	struct list_head list_entry;	// rx_pendq_list
 	response_t	rsp_pkt;	// ctio for error processing
 	uint32_t	status;
 #endif
+	struct scst_cmd scst_cmd;
 };
 
 struct q2t_sess_work_param {
