@@ -5887,7 +5887,7 @@ int qla2xxx_tgt_register_driver(struct qla_tgt_data *tgt_data)
 		    "add-on: tgt_data == NULL\n");
 		res = -EINVAL;
 		goto out;
-	} else if    (tgt_data->magic != QLA2X_TARGET_MAGIC)) {
+	} else if (tgt_data->magic != QLA2X_TARGET_MAGIC) {
 		printk(KERN_ERR
 		    "***ERROR*** Wrong version of the target mode "
 		    "add-on: %d\n", tgt_data->magic);

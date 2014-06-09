@@ -154,9 +154,9 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 static void q2t_reject_free_srr_imm(scsi_qla_host_t *vha, struct srr_imm *imm,
 	int ha_lock);
 static int q2t_cut_cmd_data_head(struct q2t_cmd *cmd, unsigned int offset);
-static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool local_only);
+static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool immediately);
 static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd);
-static void q2t_unreg_sess(struct q2t_sess *sess);
+static int q2t_unreg_sess(struct q2t_sess *sess);
 static int q2t_close_session(struct scst_session *scst_sess);
 static uint16_t q2t_get_scsi_transport_version(struct scst_tgt *scst_tgt);
 static uint16_t q2t_get_phys_transport_version(struct scst_tgt *scst_tgt);
@@ -873,9 +873,9 @@ static int q2t_reset(scsi_qla_host_t *vha, void *iocb, int mcmd)
 	if (loop_id == 0xFFFF) {
 		/* Global event */
 		atomic_inc(&vha_tgt->tgt->tgt_global_resets_count);
-		q2t_clear_tgt_db(ha->tgt, false);
+		q2t_clear_tgt_db(vha_tgt->tgt, false);
 		if (!list_empty(&vha_tgt->tgt->sess_list)) {
-			sess = list_first_entry(&ha->tgt->sess_list,
+			sess = list_first_entry(&vha_tgt->tgt->sess_list,
 				typeof(*sess), sess_list_entry);
 			switch (mcmd) {
 			case Q2T_NEXUS_LOSS_SESS:
@@ -1010,7 +1010,7 @@ static int q2t_close_session(struct scst_session *scst_sess)
 }
 
 /* ha->hardware_lock supposed to be held on entry */
-static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool local_only)
+static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool immediately)
 {
 	struct q2t_sess *sess, *sess_tmp;
 
@@ -1061,7 +1061,7 @@ static void q2t_alloc_session_done(struct scst_session *scst_sess,
 
 	if (result != 0) {
 		PRINT_INFO("qla2x00t(%ld): Session initialization failed",
-			   ha->instance);
+			   vha->host_no);
 		if (list_entry_in_list(&sess->sess_list_entry))
 			q2t_sess_del(sess);
 	}
@@ -1361,27 +1361,27 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 	spin_lock_irq(&ha->hardware_lock);
 	sess = q2t_find_sess_by_port_name_include_deleted(tgt, fcport->port_name);
 	if (sess != NULL) {
-			TRACE_MGMT_DBG("Double sess %p found (s_id %x:%x:%x, "
-				"loop_id %d), updating to d_id %x:%x:%x, "
-				"loop_id %d", sess, sess->s_id.b.domain,
-				sess->s_id.b.area, sess->s_id.b.al_pa,
-				sess->loop_id, fcport->d_id.b.domain,
-				fcport->d_id.b.area, fcport->d_id.b.al_pa,
-				fcport->loop_id);
+		TRACE_MGMT_DBG("Double sess %p found (s_id %x:%x:%x, "
+			 "loop_id %d), updating to d_id %x:%x:%x, "
+			 "loop_id %d", sess, sess->s_id.b.domain,
+			 sess->s_id.b.area, sess->s_id.b.al_pa,
+			 sess->loop_id, fcport->d_id.b.domain,
+			 fcport->d_id.b.area, fcport->d_id.b.al_pa,
+			 fcport->loop_id);
 
-			if (sess->deleted)
-				q2t_undelete_sess(sess);
+		if (sess->deleted)
+			q2t_undelete_sess(sess);
 
-			q2t_sess_get(sess);
-			sess->s_id = fcport->d_id;
-			sess->loop_id = fcport->loop_id;
-			sess->conf_compl_supported = fcport->conf_compl_supported;
-			sess->login_state = Q2T_LOGIN_STATE_NONE;
-			if (sess->local && !local)
-				sess->local = 0;
-			spin_unlock_irq(&ha->hardware_lock);
-			goto out;
-		}
+		q2t_sess_get(sess);
+		sess->s_id = fcport->d_id;
+		sess->loop_id = fcport->loop_id;
+		sess->conf_compl_supported = fcport->conf_compl_supported;
+		sess->login_state = Q2T_LOGIN_STATE_NONE;
+		if (sess->local && !local)
+			sess->local = 0;
+		spin_unlock_irq(&ha->hardware_lock);
+		goto out;
+	}
 	spin_unlock_irq(&ha->hardware_lock);
 
 	/* We are under tgt_mutex, so a new sess can't be added behind us */
@@ -1451,8 +1451,6 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 	/* FC-4 login state verified in qla2x00_get_port_database */
 	//sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
 
-
-	spin_lock_irq(&ha->hardware_lock);
 	list_add_tail(&sess->sess_list_entry, &tgt->sess_list);
 	tgt->sess_count++;
 	spin_unlock_irq(&ha->hardware_lock);
@@ -3564,16 +3562,13 @@ static inline void q2t_free_cmd(struct q2t_cmd *cmd)
 
 static void q2t_on_free_cmd(struct scst_cmd *scst_cmd)
 {
-	struct q2t_cmd *cmd;
+	struct q2t_cmd *cmd = container_of(scst_cmd, struct q2t_cmd, scst_cmd);
 
 	TRACE_ENTRY();
 
 	TRACE(TRACE_SCSI, "qla2x00t: Freeing command %p, tag %lld ox_id %04x",
 		scst_cmd, scst_cmd_get_tag(scst_cmd),
 		be16_to_cpu(cmd->atio.atio7.fcp_hdr.ox_id));
-
-
-	cmd = container_of(scst_cmd, struct q2t_cmd, scst_cmd);
 
 	q2t_free_cmd(cmd);
 
@@ -3672,6 +3667,7 @@ static int q2t_term_ctio_exchange(scsi_qla_host_t *vha, void *ctio,
 	struct q2t_cmd *cmd, uint32_t status)
 {
 	bool term = false;
+	struct qla_hw_data *ha = vha->hw;
 
 	TRACE_ENTRY();
 
@@ -5010,7 +5006,7 @@ static void q24_handle_srr(scsi_qla_host_t *vha, struct srr_ctio *sctio,
 		} else {
 			PRINT_ERROR("qla2x00t(%ld): SRR for in data for cmd "
 				"without them (tag %d, SCSI status %d, dir %d),"
-				" reject", ha->instance, cmd->tag,
+				" reject", vha->host_no, cmd->tag,
 				scst_cmd_get_status(&cmd->scst_cmd),
 				scst_cmd_get_data_direction(&cmd->scst_cmd));
 			goto out_reject;
@@ -5035,7 +5031,7 @@ static void q24_handle_srr(scsi_qla_host_t *vha, struct srr_ctio *sctio,
 		} else {
 			PRINT_ERROR("qla2x00t(%ld): SRR for out data for cmd "
 				"without them (tag %d, SCSI status %d, dir %d),"
-				" reject", ha->instance, cmd->tag,
+				" reject", vha->host_no, cmd->tag,
 				scst_cmd_get_status(&cmd->scst_cmd),
 				scst_cmd_get_data_direction(&cmd->scst_cmd));
 			goto out_reject;
@@ -5104,7 +5100,7 @@ static void q2x_handle_srr(scsi_qla_host_t *vha, struct srr_ctio *sctio,
 		} else {
 			PRINT_ERROR("qla2x00t(%ld): SRR for in data for cmd "
 				"without them (tag %d, SCSI status %d), "
-				"reject", ha->instance, cmd->tag,
+				"reject", vha->host_no, cmd->tag,
 				scst_cmd_get_status(&cmd->scst_cmd));
 			goto out_reject;
 		}
@@ -6937,13 +6933,11 @@ static int q2t_add_target(scsi_qla_host_t *vha)
 			const struct attribute *a = q2t_hw_tgt_attrs[i];
 			if (a == NULL)
 				break;
-		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
-				&q2t_hw_target_attr.attr);
-		if (rc != 0)
-			PRINT_ERROR("qla2x00t(%ld): Unable to create "
-				"\"hw_target\" file for target %s",
-				vha->host_no, scst_get_tgt_name(tgt->scst_tgt));
-				vha->host_no, scst_get_tgt_name(tgt->scst_tgt));
+			rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt), a);
+			if (rc != 0)
+				PRINT_ERROR("qla2x00t(%ld): Unable to create "
+					"\"%s\" file for target %s",
+					vha->host_no, a->name, scst_get_tgt_name(tgt->scst_tgt));
 			i++;
 		}
 	} else {
@@ -6952,13 +6946,11 @@ static int q2t_add_target(scsi_qla_host_t *vha)
 			const struct attribute *a = q2t_npiv_tgt_attrs[i];
 			if (a == NULL)
 				break;
-		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
-				&q2t_vp_node_name_attr.attr);
-		if (rc != 0)
-			PRINT_ERROR("qla2x00t(%ld): Unable to create "
-				"\"node_name\" file for NPIV target %s",
-				vha->host_no, scst_get_tgt_name(tgt->scst_tgt));
-				vha->host_no, scst_get_tgt_name(tgt->scst_tgt));
+			rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt), a);
+			if (rc != 0)
+				PRINT_ERROR("qla2x00t(%ld): Unable to create "
+					"\"%s\" file for NPIV target %s",
+					vha->host_no, a->name, scst_get_tgt_name(tgt->scst_tgt));
 			i++;
 		}
 	}
