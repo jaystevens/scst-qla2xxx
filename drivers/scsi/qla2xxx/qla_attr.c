@@ -2399,6 +2399,218 @@ qla2x00_allow_cna_fw_dump_store(struct device *dev,
 	return strlen(buf);
 }
 
+
+#include <linux/ctype.h>
+
+struct qla_trc_lvl_name {
+	uint32_t val;
+	const char *token;
+};
+
+static struct qla_trc_lvl_name qla_trc_tbl_name[] = {
+	{ql_dbg_init, "init"},
+	{ql_dbg_mbx,  "mbx"},
+	{ql_dbg_disc, "disc"},
+	{ql_dbg_io,   "io"},
+	{ql_dbg_dpc,  "dpc"},
+	{ql_dbg_async,"async"},
+	{ql_dbg_timer,"timer"},
+	{ql_dbg_user, "user"},
+	{ql_dbg_taskm,"taskm" },
+	{ql_dbg_aer,  "aer"},
+	{ql_dbg_multiq, "multiq"},
+	{ql_dbg_p3p,  "p3p"},
+	{ql_dbg_vport,"vport"},
+	{ql_dbg_buffer,"buffer"},
+	{ql_dbg_misc, "misc"},
+	{ql_dbg_verbose, "verbose"},
+	{ql_dbg_tgt,  "tgt"},
+	{ql_dbg_tgt_mgt, "tgtmgt" },
+	{ql_dbg_tgt_tmr, "tgttmr"},
+	{0, NULL},
+};
+
+#define TRACE_ALL (ql_dbg_init|ql_dbg_mbx|ql_dbg_disc|ql_dbg_io|\
+		ql_dbg_dpc|ql_dbg_async|ql_dbg_timer|ql_dbg_user|\
+		ql_dbg_taskm|ql_dbg_aer|ql_dbg_multiq|ql_dbg_p3p|\
+		ql_dbg_vport|ql_dbg_buffer|ql_dbg_misc|ql_dbg_verbose|\
+		ql_dbg_tgt|ql_dbg_tgt_mgt|ql_dbg_tgt_tmr)
+
+#define TRACE_NULL 0x00000000
+
+static ssize_t qla2x00_trace_level_show(struct device *dev,
+	struct device_attribute *attr, char *buffer)
+{
+	ulong max_size = PAGE_SIZE;
+	ulong size=0;
+
+	const struct qla_trc_lvl_name *t = qla_trc_tbl_name;
+
+	while (t->token) {
+		if (ql2xextended_error_logging & t->val) {
+			size += scnprintf(buffer + size, max_size-size,
+					"%s%s",
+					(size == 0) ? "" : " | ",
+					t->token);
+		}
+		t++;
+	}
+
+	size += scnprintf(buffer+size, max_size-size, "\n\n\nUsage:\n"
+		"       echo \"all|none|default\" >trace_level\n"
+		"       echo \"value DEC|0xHEX|0OCT\" >trace_level\n"
+		"       echo \"add|del TOKEN\" >trace_level\n"
+		"\nwhere TOKEN is one of [init, mbx, disc, io,\n"
+		"                      dpc, async, timer, user,\n"
+		"                      taskm, aer, multiq, p3p,\n"
+		"                      vport, buffer, misc,\n"
+		"                      verbose, tgt, tgtmgt, tgttmr\n");
+
+	return size;
+}
+
+static ssize_t qla2x00_trace_level_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int action,res;
+	size_t size = count;
+	unsigned long level = 0, oldlevel;
+	enum {
+		SCST_TRACE_ACTION_ALL     = 1,
+		SCST_TRACE_ACTION_NONE    = 2,
+		SCST_TRACE_ACTION_DEFAULT = 3,
+		SCST_TRACE_ACTION_ADD     = 4,
+		SCST_TRACE_ACTION_DEL     = 5,
+		SCST_TRACE_ACTION_VALUE   = 6,
+	};
+	char *buffer, *p, *e;
+	const struct qla_trc_lvl_name *t;
+
+
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)size, buf);
+	if (buffer == NULL) {
+		printk(KERN_INFO "Unable to alloc intermediate buffer (size %zd)",
+			size+1);
+		res = -ENOMEM;
+		goto out;
+	}
+
+	printk(KERN_INFO "buffer %s\n", buffer);
+
+	p = buffer;
+	if (!strncasecmp("all", p, 3)) {
+		action = SCST_TRACE_ACTION_ALL;
+	} else if (!strncasecmp("none", p, 4) || !strncasecmp("null", p, 4)) {
+		action = SCST_TRACE_ACTION_NONE;
+	} else if (!strncasecmp("default", p, 7)) {
+		action = SCST_TRACE_ACTION_DEFAULT;
+	} else if (!strncasecmp("add", p, 3)) {
+		p += 3;
+		action = SCST_TRACE_ACTION_ADD;
+	} else if (!strncasecmp("del", p, 3)) {
+		p += 3;
+		action = SCST_TRACE_ACTION_DEL;
+	} else if (!strncasecmp("value", p, 5)) {
+		p += 5;
+		action = SCST_TRACE_ACTION_VALUE;
+	} else {
+		if (p[strlen(p) - 1] == '\n')
+			p[strlen(p) - 1] = '\0';
+		printk(KERN_INFO "Unknown action \"%s\"", p);
+		res = -EINVAL;
+		goto out_free;
+	}
+
+	switch (action) {
+	case SCST_TRACE_ACTION_ADD:
+	case SCST_TRACE_ACTION_DEL:
+	case SCST_TRACE_ACTION_VALUE:
+		if (!isspace(*p)) {
+			printk(KERN_INFO "%s", "Syntax error");
+			res = -EINVAL;
+			goto out_free;
+		}
+	}
+
+	switch (action) {
+	case SCST_TRACE_ACTION_ALL:
+		level = TRACE_ALL;
+		break;
+	case SCST_TRACE_ACTION_DEFAULT:
+		level = QL_DBG_DEFAULT1_MASK;
+		break;
+	case SCST_TRACE_ACTION_NONE:
+		level = TRACE_NULL;
+		break;
+	case SCST_TRACE_ACTION_ADD:
+	case SCST_TRACE_ACTION_DEL:
+		while (isspace(*p) && *p != '\0')
+			p++;
+		e = p;
+		while (!isspace(*e) && *e != '\0')
+			e++;
+		*e = 0;
+		t = qla_trc_tbl_name;
+		while (t->token) {
+			if (!strcasecmp(p, t->token)) {
+				level = t->val;
+				break;
+			}
+			t++;
+		}
+
+		if (level == 0) {
+			t = qla_trc_tbl_name;
+			while (t->token) {
+				if (!strcasecmp(p, t->token)) {
+					level = t->val;
+					break;
+				}
+				t++;
+			}
+		}
+		if (level == 0) {
+			printk(KERN_INFO "Unknown token \"%s\"", p);
+			res = -EINVAL;
+			goto out_free;
+		}
+		break;
+	case SCST_TRACE_ACTION_VALUE:
+		while (isspace(*p) && *p != '\0')
+			p++;
+		res = strict_strtoul(p, 0, &level);
+		if (res != 0) {
+			printk(KERN_INFO "Invalid trace value \"%s\"", p);
+			res = -EINVAL;
+			goto out_free;
+		}
+		break;
+	}
+
+	oldlevel = ql2xextended_error_logging;
+
+	switch (action) {
+	case SCST_TRACE_ACTION_ADD:
+		ql2xextended_error_logging |= level;
+		break;
+	case SCST_TRACE_ACTION_DEL:
+		ql2xextended_error_logging &= ~level;
+		break;
+	default:
+		ql2xextended_error_logging = level;
+		break;
+	}
+
+	printk(KERN_INFO "Changed \"ql2xextended_error_logging\": "
+		"old 0x%lx, new 0x%08x \n",
+		oldlevel, ql2xextended_error_logging);
+
+out_free:
+	kfree(buffer);
+out:
+	return size;
+}
+
 static DEVICE_ATTR(driver_version, S_IRUGO, qla2x00_drvr_version_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, qla2x00_fw_version_show, NULL);
 static DEVICE_ATTR(serial_num, S_IRUGO, qla2x00_serial_num_show, NULL);
@@ -2446,6 +2658,9 @@ static DEVICE_ATTR(fw_dump_size, S_IRUGO, qla2x00_fw_dump_size_show, NULL);
 static DEVICE_ATTR(allow_cna_fw_dump, S_IRUGO | S_IWUSR,
 		   qla2x00_allow_cna_fw_dump_show,
 		   qla2x00_allow_cna_fw_dump_store);
+static DEVICE_ATTR(trace_level, S_IRUGO|S_IWUSR, qla2x00_trace_level_show,
+	qla2x00_trace_level_store);
+
 
 struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_driver_version,
@@ -2475,6 +2690,7 @@ struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_ini_mode_force_reverse,
 	&dev_attr_resource_counts,
 	&dev_attr_port_database,
+	&dev_attr_trace_level,
 #endif
 	&dev_attr_total_isp_aborts,
 	&dev_attr_mpi_version,
