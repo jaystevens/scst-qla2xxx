@@ -185,6 +185,15 @@ struct q2t_tgt {
 #define Q2T_LOGIN_STATE_PRLI_COMPLETED	    3
 #define Q2T_LOGIN_STATE_NONE		    0xFF
 
+typedef enum {
+	Q2T_CFLAG_CMD_ALLOC = BIT_0,
+	Q2T_CFLAG_EXEC_SESS_WK = BIT_1,
+	Q2T_CFLAG_XMIT_RSP = BIT_2,
+	Q2T_CFLAG_ABORTED  = BIT_3,
+	Q2T_CFLAG_RDY_2XFER = BIT_4,
+	Q2T_CFLAG_ON_FREE = BIT_5,
+	Q2T_CFLAG_HW_TO = BIT_6,
+} cmd_flags_t;
 /*
  * Equivilant to IT Nexus (Initiator-Target)
  */
@@ -224,6 +233,10 @@ struct q2t_cmd {
 #ifdef QLT_LOOP_BACK
 	unsigned int qlb_io:1;
 #endif /* QLT_LOOP_BACK */
+
+	cmd_flags_t cmd_flags;
+	uint64_t alloc_jiff;
+	uint64_t free_jiff;
 
 	struct scatterlist *sg;	/* cmd data buffer SG vector */
 	int sg_cnt;		/* SG segments count */

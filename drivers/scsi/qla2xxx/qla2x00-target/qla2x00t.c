@@ -2854,6 +2854,8 @@ static int q2t_pre_xmit_response(struct q2t_cmd *cmd,
 			vha->host_no, cmd, scst_cmd, cmd->tag);
 
 		cmd->state = Q2T_STATE_ABORTED;
+		cmd->cmd_flags |= Q2T_CFLAG_ABORTED;
+
 		scst_set_delivery_status(scst_cmd, SCST_CMD_DELIVERY_ABORTED);
 
 		if (IS_FWI2_CAPABLE(ha))
@@ -3168,6 +3170,7 @@ static int q2x_xmit_response(struct scst_cmd *scst_cmd)
 	cmd->dma_data_direction = scst_to_tgt_dma_dir(cmd->data_direction);
 	cmd->offset = scst_cmd_get_ppl_offset(scst_cmd);
 	cmd->aborted = scst_cmd_aborted_on_xmit(scst_cmd);
+	cmd->cmd_flags |= Q2T_CFLAG_XMIT_RSP;
 
 	q2t_check_srr_debug(cmd, &xmit_type);
 
@@ -3462,6 +3465,7 @@ static int q2t_rdy_to_xfer(struct scst_cmd *scst_cmd)
 		&cmd->sg_cnt);
 	cmd->data_direction = scst_cmd_get_data_direction(scst_cmd);
 	cmd->dma_data_direction = scst_to_tgt_dma_dir(cmd->data_direction);
+	cmd->cmd_flags |= Q2T_CFLAG_RDY_2XFER;
 
 	res = __q2t_rdy_to_xfer(cmd);
 
@@ -3624,6 +3628,7 @@ static inline void q2t_free_cmd(struct q2t_cmd *cmd)
 {
 	EXTRACHECKS_BUG_ON(cmd->sg_mapped);
 
+	cmd->free_jiff = jiffies;
 	if (unlikely(cmd->free_sg))
 		kfree(cmd->sg);
 	kmem_cache_free(q2t_cmd_cachep, cmd);
@@ -3638,6 +3643,7 @@ static void q2t_on_free_cmd(struct scst_cmd *scst_cmd)
 	TRACE(TRACE_SCSI, "qla2x00t: Freeing command %p, tag %lld ox_id %04x",
 		scst_cmd, scst_cmd_get_tag(scst_cmd),
 		be16_to_cpu(cmd->atio.atio7.fcp_hdr.ox_id));
+	cmd->cmd_flags |= Q2T_CFLAG_ON_FREE;
 
 	q2t_free_cmd(cmd);
 
@@ -4491,6 +4497,8 @@ static int q2t_send_cmd_to_scst(scsi_qla_host_t *vha, atio_t *atio)
 	cmd->state = Q2T_STATE_NEW;
 	cmd->tgt = vha->vha_tgt.tgt;
 	cmd->reset_count = vha->hw->chip_reset;
+	cmd->cmd_flags = Q2T_CFLAG_CMD_ALLOC;
+	cmd->alloc_jiff = jiffies;
 
 	if (IS_FWI2_CAPABLE(ha)) {
 		atio7_entry_t *a = (atio7_entry_t *)atio;
@@ -6543,6 +6551,9 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			s_id = a->fcp_hdr.s_id;
 		} else
 			loop_id = GET_TARGET_ID(ha, (atio_entry_t *)&cmd->atio);
+
+		cmd->cmd_flags |= Q2T_CFLAG_EXEC_SESS_WK;
+
 		break;
 	}
 	case Q2T_SESS_WORK_ABORT:
@@ -6962,6 +6973,8 @@ static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd)
 		cmd->state);
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
+
+	cmd->cmd_flags |= Q2T_CFLAG_HW_TO;
 
 	if (cmd->sg_mapped)
 		q2t_unmap_sg(vha, cmd);
