@@ -351,7 +351,7 @@ static inline struct q2t_sess *q2t_find_sess_by_loop_id(struct q2t_tgt *tgt,
 		if (loop_id == sess->loop_id) {
 			EXTRACHECKS_BUG_ON(sess->deleted);
 			return sess;
-	}
+		}
 	}
 	return NULL;
 }
@@ -367,7 +367,7 @@ static inline struct q2t_sess *q2t_find_sess_by_s_id_include_deleted(
 		    (sess->s_id.b.domain == s_id[0])) {
 			EXTRACHECKS_BUG_ON(sess->deleted);
 			return sess;
-	}
+		}
 	}
 	list_for_each_entry(sess, &tgt->del_sess_list, sess_list_entry) {
 		if ((sess->s_id.b.al_pa == s_id[2]) &&
@@ -391,7 +391,7 @@ static inline struct q2t_sess *q2t_find_sess_by_s_id(struct q2t_tgt *tgt,
 		    (sess->s_id.b.domain == s_id[0])) {
 			EXTRACHECKS_BUG_ON(sess->deleted);
 			return sess;
-	}
+		}
 	}
 	return NULL;
 }
@@ -407,7 +407,7 @@ static inline struct q2t_sess *q2t_find_sess_by_s_id_le(struct q2t_tgt *tgt,
 		    (sess->s_id.b.domain == s_id[2])) {
 			EXTRACHECKS_BUG_ON(sess->deleted);
 			return sess;
-	}
+		}
 	}
 	return NULL;
 }
@@ -428,7 +428,7 @@ static inline struct q2t_sess *q2t_find_sess_by_port_name(struct q2t_tgt *tgt,
 		    (sess->port_name[7] == port_name[7])) {
 			EXTRACHECKS_BUG_ON(sess->deleted);
 			return sess;
-	}
+		}
 	}
 	return NULL;
 }
@@ -465,6 +465,19 @@ static inline struct q2t_sess *q2t_find_sess_by_port_name_include_deleted(
 		}
 	}
 	return NULL;
+}
+
+static inline void q2t_all_sess_down (struct q2t_tgt *tgt)
+{
+	struct q2t_sess *sess;
+
+	if (!tgt)
+		return;
+
+	list_for_each_entry(sess, &tgt->sess_list, sess_list_entry) {
+		sess->login_state = Q2T_LOGIN_STATE_NONE;
+	}
+	return;
 }
 
 static inline void q2t_exec_queue(scsi_qla_host_t *vha)
@@ -859,7 +872,8 @@ static int q2t_unreg_sess(struct q2t_sess *sess)
 }
 
 /* ha->hardware_lock supposed to be held on entry */
-static int q2t_reset(scsi_qla_host_t *vha, void *iocb, int mcmd)
+static int q2t_reset(scsi_qla_host_t *vha, void *iocb, int mcmd,
+	bool sess_down)
 {
 	struct q2t_sess *sess;
 	int loop_id;
@@ -913,6 +927,9 @@ static int q2t_reset(scsi_qla_host_t *vha, void *iocb, int mcmd)
 		vha_tgt->tgt->tm_to_unknown = 1;
 		goto out;
 	}
+
+	if (sess_down)
+		sess->login_state = Q2T_LOGIN_STATE_NONE;
 
 	TRACE_MGMT_DBG("scsi(%ld): resetting (session %p from port "
 		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
@@ -1521,8 +1538,6 @@ static void q2t_fc_port_added(scsi_qla_host_t *vha, fc_port_t *fcport)
 	} else {
 		if (sess->deleted) {
 			q2t_undelete_sess(sess);
-			/* Login session comes back up */
-			sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
 
 			PRINT_INFO("qla2x00t(%ld): %s session for port %02x:"
 				"%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) "
@@ -1546,6 +1561,8 @@ static void q2t_fc_port_added(scsi_qla_host_t *vha, fc_port_t *fcport)
 			sess->loop_id = fcport->loop_id;
 			sess->conf_compl_supported = fcport->conf_compl_supported;
 		}
+		/* Login session comes back up */
+		sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
 	}
 
 	if (sess && sess->local) {
@@ -1747,7 +1764,7 @@ static int q2t_sched_sess_work(struct q2t_tgt *tgt, int type,
 
 	sBUG_ON(param_size > (sizeof(*prm) -
 		offsetof(struct q2t_sess_work_param, cmd)));
-
+	prm->reset_count = tgt->ha->hw->chip_reset;
 	prm->type = type;
 	memcpy(&prm->cmd, param, param_size);
 
@@ -4860,7 +4877,7 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 
 	case ELS_FLOGI:
 		/* Perform implicit logout when necessary */
-		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS);
+		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
 
 		s_id[0] = iocb->port_id[2];
 		s_id[1] = iocb->port_id[1];
@@ -4920,7 +4937,7 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			inot->port_id[2],inot->port_id[1],inot->port_id[0],
 			le16_to_cpu(inot->nport_handle));
 
-		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS);
+		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, true);
 		s_id[0] = iocb->port_id[2];
 		s_id[1] = iocb->port_id[1];
 		s_id[2] = iocb->port_id[0];
@@ -4954,7 +4971,7 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 		PRINT_ERROR("qla2x00t(%ld): Unsupported ELS command %x "
 			"received", vha->host_no, iocb->status_subcode);
 #if 0
-		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS);
+		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
 #endif
 		break;
 	}
@@ -5552,6 +5569,8 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *vha, void *iocb)
 		 * PDISC or ADISC ELS commands
 		 */
 		send_notify_ack = 0;
+
+		q2t_all_sess_down(tgt);
 		break;
 	}
 
@@ -5567,7 +5586,7 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *vha, void *iocb)
 				le16_to_cpu(iocb2x->seq_id),
 				le16_to_cpu(iocb2x->lun));
 		}
-		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS) == 0)
+		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, true) == 0)
 			send_notify_ack = 0;
 		/* The sessions will be cleared in the callback, if needed */
 		break;
@@ -5575,7 +5594,7 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *vha, void *iocb)
 	case IMM_NTFY_GLBL_TPRLO:
 		TRACE(TRACE_MGMT, "qla2x00t(%ld): Global TPRLO (%x)",
 			vha->host_no, status);
-		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS) == 0)
+		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS, true) == 0)
 			send_notify_ack = 0;
 		/* The sessions will be cleared in the callback, if needed */
 		break;
@@ -5589,8 +5608,10 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *vha, void *iocb)
 		PRINT_WARNING("qla2x00t(%ld): Link failure detected",
 			vha->host_no);
 		/* I_T nexus loss */
-		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS) == 0)
+		if (q2t_reset(vha, iocb, Q2T_NEXUS_LOSS, true) == 0)
 			send_notify_ack = 0;
+
+		q2t_all_sess_down(vha->vha_tgt.tgt);
 		break;
 
 	case IMM_NTFY_IOCB_OVERFLOW:
@@ -6510,6 +6531,13 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 	case Q2T_SESS_WORK_CMD:
 	{
 		struct q2t_cmd *cmd = prm->cmd;
+
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset)) {
+			q2t_free_cmd(cmd);
+			goto out_put;
+		}
+
 		if (IS_FWI2_CAPABLE(ha)) {
 			atio7_entry_t *a = (atio7_entry_t *)&cmd->atio;
 			s_id = a->fcp_hdr.s_id;
@@ -6518,6 +6546,10 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 		break;
 	}
 	case Q2T_SESS_WORK_ABORT:
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset))
+			goto out_put;
+
 		if (IS_FWI2_CAPABLE(ha)) {
 			sess = q2t_find_sess_by_s_id_le(tgt,
 				prm->abts.fcp_hdr_le.s_id);
@@ -6532,6 +6564,10 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			loop_id = GET_TARGET_ID(ha, &prm->tm_iocb);
 		break;
 	case Q2T_SESS_WORK_TM:
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset))
+			goto out_put;
+
 		if (IS_FWI2_CAPABLE(ha))
 			s_id = prm->tm_iocb2.fcp_hdr.s_id;
 		else
@@ -6540,11 +6576,19 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 
 	case Q2T_SESS_WORK_TERM:
 	case Q2T_SESS_WORK_TERM_WCMD:
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset))
+			goto out_put;
+
 		//no-op: this case is added so we don't drop into default case
 		goto send2;
 		break;
 
 	case Q2T_SESS_WORK_LOGIN:
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset))
+			goto out_put;
+
 		if (IS_FWI2_CAPABLE(ha)) {
 			s_id = local_s_id;
 			s_id[0] = prm->inot.port_id[2];

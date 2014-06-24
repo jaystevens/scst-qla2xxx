@@ -261,6 +261,7 @@ struct q2t_sess_work_param {
 #define Q2T_SESS_WORK_TERM	4	//terminate without cmd reference
 #define Q2T_SESS_WORK_LOGIN     5
 	int type;
+	int reset_count;
 
 	union {
 		struct q2t_cmd *cmd;
