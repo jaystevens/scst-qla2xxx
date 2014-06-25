@@ -3977,11 +3977,12 @@ static void q2t_do_ctio_completion(scsi_qla_host_t *vha, uint32_t handle,
 		"status %#x) <- %08x", vha->host_no, ctio, status, handle);
 
 	if (handle & CTIO_INTERMEDIATE_HANDLE_MARK) {
-		/* That could happen only in case of an error/reset/abort */
+		/* That could happen only in case of an error/reset/abort
 		if (status != CTIO_SUCCESS) {
 			TRACE_MGMT_DBG("Intermediate CTIO received (status %x)",
 				status);
 		}
+		*/
 		goto out;
 	}
 
@@ -6981,6 +6982,12 @@ static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd)
 
 	if (cmd->state == Q2T_STATE_PROCESSED) {
 		TRACE_MGMT_DBG("Force finishing cmd %p", cmd);
+
+		if (IS_FWI2_CAPABLE(ha))
+			q24_send_term_exchange(vha, NULL, &cmd->atio.atio7, 1);
+		else
+			q2x_send_term_exchange(vha, NULL, &cmd->atio.atio2x, 1);
+
 	} else if (cmd->state == Q2T_STATE_NEED_DATA) {
 		TRACE_MGMT_DBG("Force rx_data cmd %p", cmd);
 
@@ -6988,6 +6995,11 @@ static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd)
 
 		scst_rx_data(scst_cmd, SCST_RX_STATUS_ERROR_FATAL,
 				SCST_CONTEXT_THREAD);
+
+		/* scst_rx_data will trigger abort/terminate exchange
+		 * as part of error handling.  No need to term_exchange here.
+		 */
+
 		goto out_unlock;
 	} else if (cmd->state == Q2T_STATE_ABORTED) {
 		TRACE_MGMT_DBG("Force finishing aborted cmd %p (tag %d)",
