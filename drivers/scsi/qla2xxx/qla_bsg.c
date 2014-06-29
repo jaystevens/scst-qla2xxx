@@ -679,7 +679,7 @@ qla81xx_set_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
 		}
 		rval = -EINVAL;
 	} else {
-                if (ha->flags.idc_compl_status) {
+		if (ha->flags.idc_compl_status) {
 			ql_dbg(ql_dbg_user, vha, 0x70c3,
 			    "Bad status in IDC Completion AEN\n");
 			rval = -EINVAL;
@@ -1312,7 +1312,7 @@ qla24xx_iidma(struct fc_bsg_job *bsg_job)
 		return -EINVAL;
 	}
 
-	list_for_each_entry(fcport, &vha->vp_fcports, list) {
+	list_for_each_entry_rcu(fcport, &vha->vp_fcports, list) {
 		if (fcport->port_type != FCT_TARGET)
 			continue;
 

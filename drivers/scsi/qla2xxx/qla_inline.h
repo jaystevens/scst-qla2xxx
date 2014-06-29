@@ -74,7 +74,7 @@ host_to_fcp_swap(uint8_t *fcp, uint32_t bsize)
        uint32_t iter = bsize >> 2;
 
        for (; iter ; iter--)
-               *ofcp++ = swab32(*ifcp++);
+	       *ofcp++ = swab32(*ifcp++);
 
        return fcp;
 }
@@ -259,14 +259,62 @@ qla2x00_gid_list_size(struct qla_hw_data *ha)
 	else
 		return sizeof(struct gid_list_info) * ha->max_fibre_devices;
 }
-
 static inline void
 qla2x00_handle_mbx_completion(struct qla_hw_data *ha, int status)
 {
 	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
+		(status & MBX_INTERRUPT) && ha->flags.mbox_int) {
 		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
 		clear_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags);
 		complete(&ha->mbx_intr_comp);
 	}
 }
+
+
+#ifdef QLA_QRATE
+static inline void
+qla_qr_timer(scsi_qla_host_t *vha)
+{
+	unsigned int io_rate, req_rate, rsp_rate, ind;
+
+	if (!qla_q_rate || !time_after(jiffies, vha->qrate.next_chk))
+		return;
+
+	vha->qrate.next_chk = jiffies + 1 * HZ;
+
+	io_rate  = atomic_read(&vha->qrate.io_rate.value_cur);
+	req_rate = atomic_read(&vha->qrate.req_rate.value_cur);
+	rsp_rate = atomic_read(&vha->qrate.rsp_rate.value_cur);
+
+	atomic_set(&vha->qrate.io_rate.value, io_rate);
+	atomic_set(&vha->qrate.req_rate.value, req_rate);
+	atomic_set(&vha->qrate.rsp_rate.value, rsp_rate);
+
+	atomic_set(&vha->qrate.io_rate.value_cur, 0);
+	atomic_set(&vha->qrate.req_rate.value_cur, 0);
+	atomic_set(&vha->qrate.rsp_rate.value_cur, 0);
+
+	if (QLA_QR_IO_RATE_HIGH(vha) && !vha->qrate.collect_hist) {
+		vha->qrate.collect_hist = 1;
+		vha->qrate.hist_done = 0;
+		vha->qrate.index = 0;
+	}
+
+	if (!vha->qrate.collect_hist || vha->qrate.hist_done)
+		return;
+
+	ind = vha->qrate.index;
+	if (ind >= QLA_QR_NUM_HIST) {
+		vha->qrate.hist_done = 1;
+		return;
+	}
+	vha->qrate.io_rate.hist[ind] = io_rate;
+	vha->qrate.req_rate.hist[ind] = req_rate;
+	vha->qrate.rsp_rate.hist[ind] = rsp_rate;
+	vha->qrate.jiff_hist[ind] = jiffies;
+	smp_mb();
+	vha->qrate.index++;
+}
+#else /* QLA_QRATE */
+static inline void qla_qr_timer(scsi_qla_host_t *vha) {}
+#endif

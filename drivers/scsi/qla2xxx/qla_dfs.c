@@ -109,6 +109,80 @@ static const struct file_operations dfs_fce_ops = {
 	.release	= qla2x00_dfs_fce_release,
 };
 
+#ifdef QLA_QRATE
+/* q_rate related */
+static int
+qla_dfs_q_rate_show(struct seq_file *s, void *unused)
+{
+	struct scsi_qla_host *vha = s->private;
+	seq_printf(s, "Queue Rate: ATIO/REQ/RSP = %6d/%6d/%6d.\n",
+	    atomic_read(&vha->qrate.io_rate.value),
+	    atomic_read(&vha->qrate.req_rate.value),
+	    atomic_read(&vha->qrate.rsp_rate.value));
+	return 0;
+}
+static int
+qla_dfs_q_rate_open(struct inode *inode, struct file *file)
+{
+	struct scsi_qla_host *vha = inode->i_private;
+	return single_open(file, qla_dfs_q_rate_show, vha);
+}
+static const struct file_operations dfs_q_rate_ops = {
+	.open		= qla_dfs_q_rate_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+/* q_rate_hist related */
+static int
+qla_dfs_q_rate_hist_show(struct seq_file *s, void *unused)
+{
+	struct scsi_qla_host *vha = s->private;
+	uint32_t i, num_ent;
+	if (!vha->qrate.collect_hist) {
+		seq_printf(s, "No queue rate history available.\n");
+		return 0;
+	}
+	num_ent = vha->qrate.index;
+	smp_mb();
+	seq_printf(s, "Queue rate history for %u seconds (starts "
+	    "when IO rate hits qla_q_rate_limit).\n", QLA_QR_NUM_HIST);
+	for (i=0; i<num_ent; i++)
+		seq_printf(s, "[%02d] ATIO/REQ/RSP = %6u/%6u/%6u. (%lu)\n",
+		    i, vha->qrate.io_rate.hist[i], vha->qrate.req_rate.hist[i],
+		    vha->qrate.req_rate.hist[i], vha->qrate.jiff_hist[i]);
+	return 0;
+}
+
+static ssize_t
+qla_dfs_q_rate_hist_write(struct file *file, const char __user *buf,
+    size_t size, loff_t *ppos)
+{
+	struct scsi_qla_host *vha =
+	    ((struct seq_file *)file->private_data)->private;
+	memset(&vha->qrate.io_rate, sizeof(struct qla_qrate_stat), 0);
+	memset(&vha->qrate.req_rate, sizeof(struct qla_qrate_stat), 0);
+	memset(&vha->qrate.rsp_rate, sizeof(struct qla_qrate_stat), 0);
+	vha->qrate.collect_hist = 0;
+	return size;
+}
+
+static int
+qla_dfs_q_rate_hist_open(struct inode *inode, struct file *file)
+{
+	struct scsi_qla_host *vha = inode->i_private;
+	return single_open(file, qla_dfs_q_rate_hist_show, vha);
+}
+static const struct file_operations dfs_q_rate_hist_ops = {
+	.open		= qla_dfs_q_rate_hist_open,
+	.read		= seq_read,
+	.write		= qla_dfs_q_rate_hist_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif /* QLA_QRATE */
+
 int
 qla2x00_dfs_setup(scsi_qla_host_t *vha)
 {
@@ -153,6 +227,24 @@ create_nodes:
 		    "Unable to create debugfs fce node.\n");
 		goto out;
 	}
+
+#ifdef QLA_QRATE
+	ha->dfs_q_rate = debugfs_create_file("q_rate", S_IRUSR,
+	    ha->dfs_dir, vha, &dfs_q_rate_ops);
+	if (!ha->dfs_q_rate) {
+		ql_log(ql_log_warn, vha, 0x00fa,
+		    "Unable to create debugfs q_rate node.\n");
+		goto out;
+	}
+	ha->dfs_q_rate_hist = debugfs_create_file("q_rate_hist",
+	    S_IRUSR|S_IWUSR, ha->dfs_dir, vha, &dfs_q_rate_hist_ops);
+	if (!ha->dfs_q_rate_hist) {
+		ql_log(ql_log_warn, vha, 0x00fb,
+		    "Unable to create debugfs q_rate_hist node.\n");
+		goto out;
+	}
+#endif /* QLA_QRATE */
+
 out:
 	return 0;
 }
@@ -167,7 +259,7 @@ qla2x00_dfs_remove(scsi_qla_host_t *vha)
 	}
 
 	if (ha->dfs_dir) {
-		debugfs_remove(ha->dfs_dir);
+		debugfs_remove_recursive(ha->dfs_dir);
 		ha->dfs_dir = NULL;
 		atomic_dec(&qla2x00_dfs_root_count);
 	}

@@ -1193,8 +1193,8 @@ static const int MD_MIU_TEST_AGT_RDDATA[] = { 0x410000A8, 0x410000AC,
  */
 enum {
 	QLA82XX_TEMP_NORMAL = 0x1,       /* Normal operating range */
-	QLA82XX_TEMP_WARN,       	/* Sound alert, temperature getting high */
-	QLA82XX_TEMP_PANIC       	/* Fatal error, hardware has shut down. */
+	QLA82XX_TEMP_WARN,	 	/* Sound alert, temperature getting high */
+	QLA82XX_TEMP_PANIC	 	/* Fatal error, hardware has shut down. */
 };
 
 #define LEG_INTR_PTR_OFFSET	0x38C0

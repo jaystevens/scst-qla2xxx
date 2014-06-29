@@ -15,10 +15,10 @@
  * |                              |                    | 0x0144,0x0146	|
  * |                              |                    | 0x015b-0x0160	|
  * |                              |                    | 0x016e-0x0170	|
- * | Mailbox commands             |       0x118b       | 0x1115-0x1116	|
- * |                              |                    | 0x111a		|
- * | Device Discovery             |       0x2016       | 0x2020-0x2022  |
- * |                              |                    | 0x2099-0x20a4  |
+ * | Mailbox commands             |       0x118b       | 0x1115-0x1116  |
+ * |                              |                    | 0x111a         |
+ * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
+ * |                              |                    | 0x2016         |
  * | Queue Command and IO tracing |       0x3052       | 0x3006-0x300b  |
  * |				  |		       | 0x3027-0x3028  |
  * |                              |                    | 0x304b-0x304c  |
@@ -27,9 +27,9 @@
  * |                              |                    | 0x401e-0x401f  |
  * | Async Events                 |       0x5087       | 0x502b-0x502f  |
  * |                              |                    | 0x503d,0x5044  |
- * |				  | 		       | 0x5047         |
- * |				  | 		       | 0x5074,0x5075  |
- * |				  | 		       | 0x507b,0x507a  |
+ * |				  |		       | 0x5047         |
+ * |				  |		       | 0x5074,0x5075  |
+ * |				  |		       | 0x507b,0x507a  |
  * | Timer Routines               |       0x6012       |                |
  * | User Space Interactions      |       0x70e1       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |
@@ -494,8 +494,58 @@ qla25xx_copy_fce(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 
 	memcpy(iter_reg, ha->fce, ntohl(fcec->size));
 
-	return (void *)iter_reg + ntohl(fcec->size);
+	return (char *)iter_reg + ntohl(fcec->size);
 }
+
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+static inline void *
+qla2xxx_copy_atioqueues(struct qla_hw_data *ha, void *ptr,
+	uint32_t **last_chain)
+{
+	struct qla2xxx_mqueue_chain *q;
+	struct qla2xxx_mqueue_header *qh;
+	uint32_t num_queues;
+	int que;
+	struct {
+		int length;
+		void *ring;
+	} aq, *aqp;
+
+	if (!ha->ha_tgt.atio_ring)
+		return ptr;
+
+	num_queues = 1;
+	aqp = &aq;
+	aqp->length = ha->ha_tgt.atio_q_length;
+	aqp->ring = ha->ha_tgt.atio_ring;
+
+	for (que = 0; que < num_queues; que++) {
+		/* aqp = ha->atio_q_map[que]; */
+		q = ptr;
+		*last_chain = &q->type;
+		q->type = __constant_htonl(DUMP_CHAIN_QUEUE);
+		q->chain_size = htonl(
+		    sizeof(struct qla2xxx_mqueue_chain) +
+		    sizeof(struct qla2xxx_mqueue_header) +
+		    (aqp->length * sizeof(request_t)));
+		ptr += sizeof(struct qla2xxx_mqueue_chain);
+
+		/* Add header. */
+		qh = ptr;
+		qh->queue = __constant_htonl(TYPE_ATIO_QUEUE);
+		qh->number = htonl(que);
+		qh->size = htonl(aqp->length * sizeof(request_t));
+		ptr += sizeof(struct qla2xxx_mqueue_header);
+
+		/* Add data. */
+		memcpy(ptr, aqp->ring, aqp->length * sizeof(request_t));
+
+		ptr += aqp->length * sizeof(request_t);
+	}
+
+	return ptr;
+}
+#endif
 
 static inline void *
 qla25xx_copy_mqueues(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
@@ -998,6 +1048,8 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	struct qla24xx_fw_dump *fw;
 	uint32_t	ext_mem_cnt;
 	void		*nxt;
+	void		*nxt_chain;
+	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
 	if (IS_P3P_TYPE(ha))
@@ -1217,6 +1269,18 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	nxt = qla2xxx_copy_queues(ha, nxt);
 
 	qla24xx_copy_eft(ha, nxt);
+
+	nxt_chain = (void *)ha->fw_dump + ha->chain_offset;
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
+#endif
+	if (last_chain) {
+		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
+		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
+	}
+
+	/* Adjust valid length. */
+	ha->fw_dump_len = (nxt_chain - (void *)ha->fw_dump);
 
 qla24xx_fw_dump_failed_0:
 	qla2xxx_dump_post_process(base_vha, rval);
@@ -1528,6 +1592,10 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
+
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
+#endif
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
@@ -1848,6 +1916,10 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
+
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
+#endif
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
@@ -2354,6 +2426,9 @@ copy_queue:
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
+#endif
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);

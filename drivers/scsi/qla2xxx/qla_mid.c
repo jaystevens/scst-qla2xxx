@@ -15,6 +15,10 @@
 #include <scsi/scsicam.h>
 #include <linux/delay.h>
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+#include "qla2x_tgt.h"
+#endif
+
 void
 qla2x00_vp_stop_timer(scsi_qla_host_t *vha)
 {
@@ -50,6 +54,9 @@ qla24xx_allocate_vp_id(scsi_qla_host_t *vha)
 	list_add_tail(&vha->list, &ha->vp_list);
 	spin_unlock_irqrestore(&ha->vport_slock, flags);
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	ha->ha_tgt.tgt_vp_map[vp_id].vha = vha;
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 	mutex_unlock(&ha->vport_lock);
 	return vp_id;
 }
@@ -84,6 +91,9 @@ qla24xx_deallocate_vp_id(scsi_qla_host_t *vha)
 	ha->num_vhosts--;
 	clear_bit(vp_id, ha->vp_idx_map);
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	ha->ha_tgt.tgt_vp_map[vp_id].vha = NULL;
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 	mutex_unlock(&ha->vport_lock);
 }
 
@@ -130,7 +140,7 @@ qla2x00_mark_vp_devices_dead(scsi_qla_host_t *vha)
 	 */
 	fc_port_t *fcport;
 
-	list_for_each_entry(fcport, &vha->vp_fcports, list) {
+	list_for_each_entry_rcu(fcport, &vha->vp_fcports, list) {
 		ql_dbg(ql_dbg_vport, vha, 0xa001,
 		    "Marking port dead, loop_id=0x%04x : %x.\n",
 		    fcport->loop_id, fcport->vha->vp_idx);
@@ -148,6 +158,10 @@ qla24xx_disable_vp(scsi_qla_host_t *vha)
 	ret = qla24xx_control_vp(vha, VCE_COMMAND_DISABLE_VPS_LOGO_ALL);
 	atomic_set(&vha->loop_state, LOOP_DOWN);
 	atomic_set(&vha->loop_down_timer, LOOP_DOWN_TIME);
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	/* Remove port id from vp target map */
+	vha->hw->ha_tgt.tgt_vp_map[vha->d_id.b.al_pa].idx = 0;
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
 	qla2x00_mark_vp_devices_dead(vha);
 	atomic_set(&vha->vp_state, VP_FAILED);
@@ -266,6 +280,7 @@ qla2x00_alert_all_vps(struct rsp_que *rsp, uint16_t *mb)
 int
 qla2x00_vp_abort_isp(scsi_qla_host_t *vha)
 {
+	int ret;
 	/*
 	 * Physical port will do most of the abort and recovery work. We can
 	 * just treat it as a loop down
@@ -288,7 +303,13 @@ qla2x00_vp_abort_isp(scsi_qla_host_t *vha)
 
 	ql_dbg(ql_dbg_taskm, vha, 0x801d,
 	    "Scheduling enable of Vport %d.\n", vha->vp_idx);
-	return qla24xx_enable_vp(vha);
+	ret = qla24xx_enable_vp(vha);
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	/* Enable target response to SCSI bus. */
+	if (qla_tgt_mode_enabled(vha))
+		qla2x00_send_enable_lun(vha, true);
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
+	return ret;
 }
 
 static int

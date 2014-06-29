@@ -211,25 +211,25 @@ qlafx00_config_rings(struct scsi_qla_host *vha)
 }
 
 char *
-qlafx00_pci_info_str(struct scsi_qla_host *vha, char *str)
+qlafx00_pci_info_str(struct scsi_qla_host *vha, char *str, int str_len)
 {
 	struct qla_hw_data *ha = vha->hw;
 	int pcie_reg;
 
 	pcie_reg = pci_find_capability(ha->pdev, PCI_CAP_ID_EXP);
 	if (pcie_reg) {
-		strcpy(str, "PCIe iSA");
+		strlcpy(str, "PCIe iSA", str_len);
 		return str;
 	}
 	return str;
 }
 
 char *
-qlafx00_fw_version_str(struct scsi_qla_host *vha, char *str, size_t size)
+qlafx00_fw_version_str(struct scsi_qla_host *vha, char *str, int str_len)
 {
 	struct qla_hw_data *ha = vha->hw;
 
-	snprintf(str, size, "%s", ha->mr.fw_version);
+	snprintf(str, str_len, "%s", ha->mr.fw_version);
 	return str;
 }
 
@@ -678,8 +678,13 @@ qlafx00_find_all_targets(scsi_qla_host_t *vha,
 		lptr++;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)
 	for_each_bit(tgt_id, (void *)ha->gid_list,
 	    QLAFX00_TGT_NODE_LIST_SIZE) {
+#else
+	for_each_set_bit(tgt_id, (void *)ha->gid_list,
+	    QLAFX00_TGT_NODE_LIST_SIZE) {
+#endif
 		/* Send get target node info */
 		new_fcport->tgt_id = tgt_id;
 		rval = qlafx00_fx_disc(vha, new_fcport,
@@ -1471,6 +1476,84 @@ qla2x00_fxdisc_sp_done(void *data, void *ptr, int res)
 	complete(&lio->u.fxiocb.fxiocb_comp);
 }
 
+
+/** strim() function definition for SLES11 */
+#define _U      0x01    /* upper */
+#define _L      0x02    /* lower */
+#define _D      0x04    /* digit */
+#define _C      0x08    /* cntrl */
+#define _P      0x10    /* punct */
+#define _S      0x20    /* white space (space/lf/tab) */
+#define _X      0x40    /* hex digit */
+#define _SP     0x80    /* hard space (0x20) */
+
+const unsigned char _ctype[] = {
+_C, _C, _C, _C, _C, _C, _C, _C,                         /* 0-7 */
+_C, _C|_S, _C|_S, _C|_S, _C|_S, _C|_S, _C, _C,          /* 8-15 */
+_C, _C, _C, _C, _C, _C, _C, _C,                         /* 16-23 */
+_C, _C, _C, _C, _C, _C, _C, _C,                         /* 24-31 */
+_S|_SP, _P, _P, _P, _P, _P, _P, _P,                     /* 32-39 */
+_P, _P, _P, _P, _P, _P, _P, _P,                         /* 40-47 */
+_D, _D, _D, _D, _D, _D, _D, _D,                         /* 48-55 */
+_D, _D, _P, _P, _P, _P, _P, _P,                         /* 56-63 */
+_P, _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U,       /* 64-71 */
+_U, _U, _U, _U, _U, _U, _U, _U,                         /* 72-79 */
+_U, _U, _U, _U, _U, _U, _U, _U,                         /* 80-87 */
+_U, _U, _U, _P, _P, _P, _P, _P,                         /* 88-95 */
+_P, _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L,       /* 96-103 */
+_L, _L, _L, _L, _L, _L, _L, _L,                         /* 104-111 */
+_L, _L, _L, _L, _L, _L, _L, _L,                         /* 112-119 */
+_L, _L, _L, _P, _P, _P, _P, _C,                         /* 120-127 */
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         /* 128-143 */
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         /* 144-159 */
+_S|_SP, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P,     /* 160-175 */
+_P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P,         /* 176-191 */
+_U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U, _U,         /* 192-207 */
+_U, _U, _U, _U, _U, _U, _U, _P, _U, _U, _U, _U, _U, _U, _U, _L,         /* 208-223 */
+_L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L, _L,         /* 224-239 */
+_L, _L, _L, _L, _L, _L, _L, _P, _L, _L, _L, _L, _L, _L, _L, _L};        /* 240-255 */
+
+#define __ismask(x) (_ctype[(int)(unsigned char)(x)])
+#define isspace(c)      ((__ismask(c)&(_S)) != 0)
+
+/**
+ * qla2x00_skip_spaces - Removes leading whitespace from @str.
+ * @str: The string to be stripped.
+ *
+ * Returns a pointer to the first non-whitespace character in @str.
+ */
+static inline char *qla2x00_skip_spaces(const char *str)
+{
+	while (isspace(*str))
+		++str;
+	return (char *)str;
+}
+
+/**
+ * qla2x00_strim - Removes leading and trailing whitespace from @s.
+ * @s: The string to be stripped.
+ *
+ * Note that the first trailing whitespace is replaced with a %NUL-terminator
+ * in the given string @s. Returns a pointer to the first non-whitespace
+ * character in @s.
+ */
+static char *qla2x00_strim(char *s)
+{
+	size_t size;
+	char *end;
+
+	size = strlen(s);
+	if (!size)
+		return s;
+
+	end = s + size - 1;
+	while (end >= s && isspace(*end))
+		end--;
+	*(end + 1) = '\0';
+
+	return qla2x00_skip_spaces(s);
+}
+
 int
 qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 {
@@ -1617,7 +1700,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		    sizeof(vha->hw->mr.hw_version));
 		memcpy(&vha->hw->mr.fw_version, pinfo->fw_version,
 		    sizeof(vha->hw->mr.fw_version));
-		strim(vha->hw->mr.fw_version);
+		qla2x00_strim(vha->hw->mr.fw_version);
 		memcpy(&vha->hw->mr.uboot_version, pinfo->uboot_version,
 		    sizeof(vha->hw->mr.uboot_version));
 		memcpy(&vha->hw->mr.fru_serial_num, pinfo->fru_serial_num,

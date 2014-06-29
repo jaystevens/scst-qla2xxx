@@ -26,6 +26,18 @@
 #define PDO_FORCE_ADISC		BIT_1
 #define PDO_FORCE_PLOGI		BIT_0
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+struct qla_port23_data {
+	uint8_t port_name[WWN_SIZE];
+	uint16_t loop_id;
+};
+
+struct qla_port24_data {
+	uint8_t port_name[WWN_SIZE];
+	uint16_t loop_id;
+	uint16_t reserved;
+};
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
 #define	PORT_DATABASE_24XX_SIZE		64
 struct port_database_24xx {
@@ -300,7 +312,8 @@ struct init_cb_24xx {
 	uint32_t prio_request_q_address[2];
 
 	uint16_t msix;
-	uint8_t reserved_2[6];
+	uint16_t msix_atio;
+	uint8_t reserved_2[4];
 
 	uint16_t atio_q_inpointer;
 	uint16_t atio_q_length;
@@ -1037,6 +1050,8 @@ struct device_reg_24xx {
 #define GPDX_LED_YELLOW_ON	BIT_2
 #define GPDX_LED_GREEN_ON	BIT_3
 #define GPDX_LED_AMBER_ON	BIT_4
+#define GPDX_LASER_MASK		BIT_22
+#define GPDX_LASER_DISABLE	BIT_6
 					/* Data in/out. */
 #define GPDX_DATA_INOUT		(BIT_1|BIT_0)
 
@@ -1135,6 +1150,13 @@ struct device_reg_24xx {
 
 #define MIN_MULTI_ID_FABRIC	64	/* Must be power-of-2. */
 #define MAX_MULTI_ID_FABRIC	256	/* ... */
+
+#define for_each_mapped_vp_idx(_ha, _idx)			\
+	for (_idx = find_next_bit((_ha)->vp_idx_map,	\
+		(_ha)->max_npiv_vports + 1, 1);		\
+	    _idx <= (_ha)->max_npiv_vports;		\
+	    _idx = find_next_bit((_ha)->vp_idx_map,	\
+		(_ha)->max_npiv_vports + 1, _idx + 1))	\
 
 struct mid_conf_entry_24xx {
 	uint16_t reserved_1;
@@ -1292,27 +1314,27 @@ struct vp_rpt_id_entry_24xx {
 
 #define VF_EVFP_IOCB_TYPE       0x26    /* Exchange Virtual Fabric Parameters entry. */
 struct vf_evfp_entry_24xx {
-        uint8_t entry_type;             /* Entry type. */
-        uint8_t entry_count;            /* Entry count. */
-        uint8_t sys_define;             /* System defined. */
-        uint8_t entry_status;           /* Entry Status. */
+	uint8_t entry_type;             /* Entry type. */
+	uint8_t entry_count;            /* Entry count. */
+	uint8_t sys_define;             /* System defined. */
+	uint8_t entry_status;           /* Entry Status. */
 
-        uint32_t handle;                /* System handle. */
-        uint16_t comp_status;           /* Completion status. */
-        uint16_t timeout;               /* timeout */
-        uint16_t adim_tagging_mode;
+	uint32_t handle;                /* System handle. */
+	uint16_t comp_status;           /* Completion status. */
+	uint16_t timeout;               /* timeout */
+	uint16_t adim_tagging_mode;
 
-        uint16_t vfport_id;
-        uint32_t exch_addr;
+	uint16_t vfport_id;
+	uint32_t exch_addr;
 
-        uint16_t nport_handle;          /* N_PORT handle. */
-        uint16_t control_flags;
-        uint32_t io_parameter_0;
-        uint32_t io_parameter_1;
-        uint32_t tx_address[2];         /* Data segment 0 address. */
-        uint32_t tx_len;                /* Data segment 0 length. */
-        uint32_t rx_address[2];         /* Data segment 1 address. */
-        uint32_t rx_len;                /* Data segment 1 length. */
+	uint16_t nport_handle;          /* N_PORT handle. */
+	uint16_t control_flags;
+	uint32_t io_parameter_0;
+	uint32_t io_parameter_1;
+	uint32_t tx_address[2];         /* Data segment 0 address. */
+	uint32_t tx_len;                /* Data segment 0 length. */
+	uint32_t rx_address[2];         /* Data segment 1 address. */
+	uint32_t rx_len;                /* Data segment 1 length. */
 };
 
 /* END MID Support ***********************************************************/

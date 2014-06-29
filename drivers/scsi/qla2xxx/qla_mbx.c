@@ -6,6 +6,8 @@
  */
 #include "qla_def.h"
 
+#include "qla2x_tgt.h"
+
 #include <linux/delay.h>
 
 
@@ -28,7 +30,7 @@
  * Context:
  *	Kernel context.
  */
-static int
+int
 qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 {
 	int		rval;
@@ -306,11 +308,11 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 			ql_dbg(ql_dbg_mbx, vha, 0x101b,
 			    "Timeout, schedule isp_abort_needed.\n");
 
-			if (!test_bit(ISP_ABORT_NEEDED, &vha->dpc_flags) &&
-			    !test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags) &&
-			    !test_bit(ISP_ABORT_RETRY, &vha->dpc_flags)) {
+			if (!test_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags) &&
+			    !test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags) &&
+			    !test_bit(ISP_ABORT_RETRY, &base_vha->dpc_flags)) {
 				if (IS_QLA82XX(ha)) {
-					ql_dbg(ql_dbg_mbx, vha, 0x112a,
+					ql_dbg(ql_dbg_mbx, base_vha, 0x112a,
 					    "disabling pause transmit on port "
 					    "0 & 1.\n");
 					qla82xx_wr_32(ha,
@@ -323,17 +325,17 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 				    "mb[0]=0x%x, eeh_busy=0x%x. Scheduling ISP "
 				    "abort.\n", command, mcp->mb[0],
 				    ha->flags.eeh_busy);
-				set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-				qla2xxx_wake_dpc(vha);
+				set_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags);
+				qla2xxx_wake_dpc(base_vha);
 			}
 		} else if (!abort_active) {
 			/* call abort directly since we are in the DPC thread */
-			ql_dbg(ql_dbg_mbx, vha, 0x101d,
+			ql_dbg(ql_dbg_mbx, base_vha, 0x101d,
 			    "Timeout, calling abort_isp.\n");
 
-			if (!test_bit(ISP_ABORT_NEEDED, &vha->dpc_flags) &&
-			    !test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags) &&
-			    !test_bit(ISP_ABORT_RETRY, &vha->dpc_flags)) {
+			if (!test_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags) &&
+			    !test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags) &&
+			    !test_bit(ISP_ABORT_RETRY, &base_vha->dpc_flags)) {
 				if (IS_QLA82XX(ha)) {
 					ql_dbg(ql_dbg_mbx, vha, 0x112b,
 					    "disabling pause transmit on port "
@@ -347,16 +349,17 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 				    "Mailbox cmd timeout occurred, cmd=0x%x, "
 				    "mb[0]=0x%x. Scheduling ISP abort ",
 				    command, mcp->mb[0]);
-				set_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags);
-				clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+
+				set_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags);
+				clear_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags);
 				/* Allow next mbx cmd to come in. */
 				complete(&ha->mbx_cmd_comp);
-				if (ha->isp_ops->abort_isp(vha)) {
+				if (ha->isp_ops->abort_isp(base_vha)) {
 					/* Failed. retry later. */
 					set_bit(ISP_ABORT_NEEDED,
-					    &vha->dpc_flags);
+						&base_vha->dpc_flags);
 				}
-				clear_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags);
+				clear_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags);
 				ql_dbg(ql_dbg_mbx, vha, 0x101f,
 				    "Finished abort_isp.\n");
 				goto mbx_done;
@@ -369,7 +372,7 @@ premature_exit:
 	complete(&ha->mbx_cmd_comp);
 
 mbx_done:
-	if (rval) {
+	if (rval != QLA_SUCCESS) {
 		ql_log(ql_log_warn, base_vha, 0x1020,
 		    "**** Failed mbx[0]=%x, mb[1]=%x, mb[2]=%x, mb[3]=%x, cmd=%x ****.\n",
 		    mcp->mb[0], mcp->mb[1], mcp->mb[2], mcp->mb[3], command);
@@ -472,6 +475,9 @@ qla2x00_execute_fw(scsi_qla_host_t *vha, uint32_t risc_addr)
 			    EXTENDED_BB_CREDITS);
 		} else
 			mcp->mb[4] = 0;
+		if (ha->flags.exlogins_enabled) {
+			mcp->mb[4] |= MBX_7;
+		}
 		mcp->out_mb |= MBX_4|MBX_3|MBX_2|MBX_1;
 		mcp->in_mb |= MBX_1;
 	} else {
@@ -588,6 +594,110 @@ failed:
 		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x102b,
 		    "Done %s.\n", __func__);
 	}
+	return rval;
+}
+
+/*
+ * qla_get_exlogin_status
+ *	Get extended login status
+ *	This routine uses the Memory Offload Control/Status MBox
+ *
+ * Input:
+ *	ha = adapter block pointer.
+ *	fwopt = pointer for firmware options.
+ *
+ * Returns:
+ *	qla2x00 local function return status code.
+ *
+ * Context:
+ *	Kernel context.
+ */
+#define	FETCH_XLOGINS_STAT		0x8
+int
+qla_get_exlogin_status(scsi_qla_host_t *vha, uint16_t *buf_sz, uint16_t *ex_logins_cnt)
+{
+	int rval;
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1018,
+	    "Entered %s.\n", __func__);
+
+	mcp->mb[0] = MBC_GET_MEM_OFFLOAD_CNTRL_STAT;
+	mcp->mb[1] = FETCH_XLOGINS_STAT;
+	mcp->out_mb = MBX_1|MBX_0;
+	mcp->in_mb = MBX_10|MBX_4|MBX_0;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval != QLA_SUCCESS) {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_mbx, vha, 0x1115, "Failed=%x.\n", rval);
+	} else {
+		*buf_sz = mcp->mb[4];
+		*ex_logins_cnt = mcp->mb[10];
+
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1116,
+		    "Done %s.\n", __func__);
+	}
+
+	return rval;
+}
+
+/*
+ * qla_set_exlogin_mem_cfg
+ *	Set extended login memory configuration
+ *	This mbox needs to be issue before init_cb is set.
+ * Input:
+ *	ha = adapter state pointer.
+ *	buffer = buffer pointer.
+ *	phys_addr = physical address of buffer.
+ *	size = size of buffer.
+ *	TARGET_QUEUE_LOCK must be released.
+ *	ADAPTER_STATE_LOCK must be released.
+ *
+ * Returns:
+ *	qla2x00 local function return status code.
+ *
+ * Context:
+ *	Kernel context.
+ */
+#define	CONFIG_XLOGINS_MEM		0x9
+int
+qla_set_exlogin_mem_cfg(scsi_qla_host_t *vha, dma_addr_t phys_addr)
+{
+	int		rval;
+	mbx_cmd_t	mc;
+	mbx_cmd_t	*mcp = &mc;
+	struct qla_hw_data *ha = vha->hw;
+
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x111a,
+	    "Entered %s.\n", __func__);
+
+	mcp->mb[0] = MBC_GET_MEM_OFFLOAD_CNTRL_STAT;
+	mcp->mb[1] = CONFIG_XLOGINS_MEM;
+
+	mcp->mb[2] = MSW(phys_addr);
+	mcp->mb[3] = LSW(phys_addr);
+	mcp->mb[6] = MSW(MSD(phys_addr));
+	mcp->mb[7] = LSW(MSD(phys_addr));
+	mcp->mb[8] = MSW(ha->exlogin_siz);
+	mcp->mb[9] = LSW(ha->exlogin_siz);
+	mcp->out_mb = MBX_9|MBX_8|MBX_7|MBX_6|MBX_3|MBX_2|MBX_1|MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval != QLA_SUCCESS) {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_mbx, vha, 0x111b, "Failed=%x.\n", rval);
+	} else {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x118c,
+		    "Done %s.\n", __func__);
+	}
+
 	return rval;
 }
 
@@ -1222,9 +1332,38 @@ qla2x00_init_firmware(scsi_qla_host_t *vha, uint16_t size)
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x104c,
 	    "Entered %s.\n", __func__);
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	if (!qla_tgt_mode_enabled(vha) && !qla_ini_mode_enabled(vha)) {
+		printk("qla2x00_init_firmware(%ld): neither initiator, "
+			"nor target mode enabled, exiting\n", vha->host_no);
+		rval = QLA_SUCCESS;
+		goto out;
+	}
+#endif
 	if (IS_P3P_TYPE(ha) && ql2xdbwr)
 		qla82xx_wr_32(ha, ha->nxdb_wr_ptr,
 			(0x04 | (ha->portnum << 5) | (0 << 8) | (0 << 16)));
+#if 0
+	if (IS_FWI2_CAPABLE(ha)) {
+		struct init_cb_24xx *icb = (struct init_cb_24xx *)ha->init_cb;
+		DEBUG5(printk(KERN_INFO "%s(): firmware_options_1 %x, "
+			"firmware_options_2 %x, firmware_options_3 %x\n",
+			__func__, icb->firmware_options_1,
+			icb->firmware_options_2, icb->firmware_options_3));
+		DEBUG5(printk(KERN_INFO "%s(): Control Block:\n", __func__));
+		DEBUG5(qla2x00_dump_buffer((uint8_t *)icb, sizeof(*icb)));
+	} else {
+		init_cb_t *icb = (init_cb_t *)ha->init_cb;
+		DEBUG5(printk(KERN_INFO "%s(): firmware_options[0] %x, "
+			"firmware_options[1] %x, add_firmware_options[0] %x, "
+			"add_firmware_options[1] %x\n", __func__,
+			icb->firmware_options[0], icb->firmware_options[1],
+			icb->add_firmware_options[0],
+			icb->add_firmware_options[1]));
+		DEBUG5(printk(KERN_INFO "%s(): Control Block:\n", __func__));
+		DEBUG5(qla2x00_dump_buffer((uint8_t *)icb, sizeof(*icb)));
+	}
+#endif
 
 	if (ha->flags.npiv_supported)
 		mcp->mb[0] = MBC_MID_INITIALIZE_FIRMWARE;
@@ -1234,6 +1373,8 @@ qla2x00_init_firmware(scsi_qla_host_t *vha, uint16_t size)
 	mcp->mb[1] = 0;
 	mcp->mb[2] = MSW(ha->init_cb_dma);
 	mcp->mb[3] = LSW(ha->init_cb_dma);
+	mcp->mb[4] = 0;
+	mcp->mb[5] = 0;
 	mcp->mb[6] = MSW(MSD(ha->init_cb_dma));
 	mcp->mb[7] = LSW(MSD(ha->init_cb_dma));
 	mcp->out_mb = MBX_7|MBX_6|MBX_3|MBX_2|MBX_1|MBX_0;
@@ -1246,9 +1387,11 @@ qla2x00_init_firmware(scsi_qla_host_t *vha, uint16_t size)
 		mcp->mb[14] = sizeof(*ha->ex_init_cb);
 		mcp->out_mb |= MBX_14|MBX_13|MBX_12|MBX_11|MBX_10;
 	}
-	mcp->in_mb = MBX_2|MBX_1|MBX_0; // 1 and 2 should normally be captured.
+	/* 1 and 2 should normally be captured. */
+	mcp->in_mb = MBX_2|MBX_1|MBX_0;
 	if (IS_QLA83XX(ha) || IS_QLA27XX(ha))
-		mcp->in_mb  |= MBX_3; // mb3 is additional info about the installed SFP.
+		/* mb3 is additional info about the installed SFP. */
+		mcp->in_mb  |= MBX_3;
 	mcp->buf_size = size;
 	mcp->flags = MBX_DMA_OUT;
 	mcp->tov = MBX_TOV_SECONDS;
@@ -1264,9 +1407,103 @@ qla2x00_init_firmware(scsi_qla_host_t *vha, uint16_t size)
 		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x104e,
 		    "Done %s.\n", __func__);
 	}
-
+out:
 	return rval;
 }
+
+/*
+ * qla2x00_get_node_name_list
+ *	Issue get node name list mailbox command, kmalloc()
+ *	and return the resulting list. Caller must kfree() it!
+ *
+ * Input:
+ *	ha = adapter state pointer.
+ *	out_data = resulting list
+ *	out_len = length of the resulting list
+ *
+ * Returns:
+ *	qla2x00 local function return status code.
+ *
+ * Context:
+ *	Kernel context.
+ */
+int
+qla2x00_get_node_name_list(scsi_qla_host_t *vha, void **out_data, int *out_len)
+{
+	struct qla_hw_data *ha = vha->hw;
+	struct qla_port24_data *list = NULL;
+	void *pmap;
+	mbx_cmd_t mc;
+	dma_addr_t pmap_dma;
+	ulong dma_size;
+	int rval, left;
+
+	BUILD_BUG_ON(sizeof(struct qla_port24_data) <
+		     sizeof(struct qla_port23_data));
+
+	left = 1;
+	while (left > 0) {
+		dma_size = left * sizeof(*list);
+		pmap = dma_alloc_coherent(&ha->pdev->dev, dma_size,
+					 &pmap_dma, GFP_KERNEL);
+		if (pmap == NULL) {
+			printk(KERN_ERR "%s(%ld): DMA Alloc failed of "
+				"%ld\n", __func__, vha->host_no, dma_size);
+			rval = QLA_MEMORY_ALLOC_FAILED;
+			goto out;
+		}
+
+		mc.mb[0] = MBC_PORT_NODE_NAME_LIST;
+		mc.mb[1] = BIT_1 | BIT_3;
+		mc.mb[2] = MSW(pmap_dma);
+		mc.mb[3] = LSW(pmap_dma);
+		mc.mb[6] = MSW(MSD(pmap_dma));
+		mc.mb[7] = LSW(MSD(pmap_dma));
+		mc.mb[8] = dma_size;
+		mc.out_mb = MBX_0|MBX_1|MBX_2|MBX_3|MBX_6|MBX_7|MBX_8;
+		mc.in_mb = MBX_0|MBX_1;
+		mc.tov = 30;
+		mc.flags = MBX_DMA_IN;
+
+		rval = qla2x00_mailbox_command(vha, &mc);
+		if (rval != QLA_SUCCESS) {
+			if ((mc.mb[0] == MBS_COMMAND_ERROR) &&
+			    (mc.mb[1] == 0xA)) {
+				if (IS_FWI2_CAPABLE(ha))
+					left += le16_to_cpu(mc.mb[2]) / sizeof(struct qla_port24_data);
+				else
+					left += le16_to_cpu(mc.mb[2]) / sizeof(struct qla_port23_data);
+				goto restart;
+			}
+			goto out_free;
+		}
+
+		left = 0;
+
+		list = kzalloc(dma_size, GFP_KERNEL);
+		if (list == NULL) {
+			printk(KERN_ERR "%s(%ld): failed to allocate node names"
+				" list structure.\n", __func__, vha->host_no);
+			rval = QLA_MEMORY_ALLOC_FAILED;
+			goto out_free;
+		}
+
+		memcpy(list, pmap, dma_size);
+restart:
+		dma_free_coherent(&ha->pdev->dev, dma_size, pmap, pmap_dma);
+	}
+
+	*out_data = list;
+	*out_len = dma_size;
+
+out:
+	return rval;
+
+out_free:
+	dma_free_coherent(&ha->pdev->dev, dma_size, pmap, pmap_dma);
+	return rval;
+}
+EXPORT_SYMBOL(qla2x00_get_node_name_list);
 
 /*
  * qla2x00_get_port_database
@@ -1372,10 +1609,19 @@ qla2x00_get_port_database(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t opt)
 		fcport->d_id.b.rsvd_1 = 0;
 
 		/* If not target must be initiator or unknown type. */
-		if ((pd24->prli_svc_param_word_3[0] & BIT_4) == 0)
+		if ((pd24->prli_svc_param_word_3[0] & BIT_4))
+			fcport->port_type = FCT_TARGET;
+		else if ((pd24->prli_svc_param_word_3[0] & BIT_5))
 			fcport->port_type = FCT_INITIATOR;
 		else
-			fcport->port_type = FCT_TARGET;
+			fcport->port_type = FCT_UNKNOWN;
+
+		/* Passback COS information. */
+		fcport->supported_classes = (pd24->flags & PDF_CLASS_2) ?
+		    FC_COS_CLASS2 : FC_COS_CLASS3;
+
+		if (pd24->prli_svc_param_word_3[0] & BIT_7)
+			fcport->conf_compl_supported = 1;
 	} else {
 		uint64_t zero = 0;
 
@@ -1409,15 +1655,24 @@ qla2x00_get_port_database(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t opt)
 		fcport->d_id.b.al_pa = pd->port_id[2];
 		fcport->d_id.b.rsvd_1 = 0;
 
+		/* Check for device require authentication. */
+		pd->common_features & BIT_5 ? (fcport->flags |= FCF_AUTH_REQ) :
+		    (fcport->flags &= ~FCF_AUTH_REQ);
+
 		/* If not target must be initiator or unknown type. */
-		if ((pd->prli_svc_param_word_3[0] & BIT_4) == 0)
+		if ((pd->prli_svc_param_word_3[0] & BIT_4))
+			fcport->port_type = FCT_TARGET;
+		else if ((pd->prli_svc_param_word_3[0] & BIT_5))
 			fcport->port_type = FCT_INITIATOR;
 		else
-			fcport->port_type = FCT_TARGET;
+			fcport->port_type = FCT_UNKNOWN;
 
 		/* Passback COS information. */
 		fcport->supported_classes = (pd->options & BIT_4) ?
 		    FC_COS_CLASS2: FC_COS_CLASS3;
+
+		if (pd->prli_svc_param_word_3[0] & BIT_7)
+			fcport->conf_compl_supported = 1;
 	}
 
 gpd_error_out:
@@ -1434,6 +1689,7 @@ gpd_error_out:
 
 	return rval;
 }
+EXPORT_SYMBOL(qla2x00_get_port_database);
 
 /*
  * qla2x00_get_firmware_state
@@ -1850,6 +2106,8 @@ qla24xx_login_fabric(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
 			mb[10] |= BIT_0;	/* Class 2. */
 		if (lg->io_parameter[9] || lg->io_parameter[10])
 			mb[10] |= BIT_1;	/* Class 3. */
+		if (lg->io_parameter[0] & __constant_cpu_to_le32(BIT_7))
+			mb[10] |= BIT_7;	/* Confirmed Completion Allowed */
 	}
 
 	dma_pool_free(ha->s_dma_pool, lg, lg_dma);
@@ -2030,7 +2288,7 @@ qla24xx_fabric_logout(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
 	struct rsp_que *rsp;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x106d,
-	    "Entered %s.\n", __func__);
+		"Entered %s lid=%d.\n", __func__,loop_id);
 
 	lg = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL, &lg_dma);
 	if (lg == NULL) {
@@ -2082,6 +2340,181 @@ qla24xx_fabric_logout(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
 
 	return rval;
 }
+
+/*
+ * Perform an explicit LOGO
+ *
+ * Input:
+ *
+ *           vha = adapter block pointer.
+ *           loop_id = loop_id of destination device.
+ *           domain = domain of destination device.
+ *           area = area of destination device.
+ *           alpa = alpa of destination device.
+ *           s_id = port_id of source device.
+ *           s_port_name = wwpn of source device.
+ *
+ * Returns:
+ *           Return status code.
+ */
+int
+qla24xx_logo(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
+    uint8_t area, uint8_t al_pa, port_id_t s_id, uint8_t *s_port_name)
+{
+	int             rval;
+	struct logio_entry_24xx *lg;
+	dma_addr_t      lg_dma;
+	uint64_t        wwpn;
+	struct qla_hw_data *ha = vha->hw;
+
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1160,
+	       "%s(%ld): entered id=%02x%02x%02x lid=%x.\n", __func__,
+		vha->host_no,domain,area,al_pa,loop_id);
+
+	lg = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL, &lg_dma);
+	if (lg == NULL) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1161,
+		       "%s(%ld): failed to allocate Logout IOCB.\n",
+		       __func__, vha->host_no);
+		return QLA_MEMORY_ALLOC_FAILED;
+	}
+	memset(lg, 0, sizeof(struct logio_entry_24xx));
+
+	lg->entry_type = LOGINOUT_PORT_IOCB_TYPE;
+	lg->entry_count = 1;
+	lg->nport_handle = cpu_to_le16(loop_id);
+	lg->control_flags =
+	    __constant_cpu_to_le16(LCF_COMMAND_LOGO);
+	lg->port_id[0] = al_pa;
+	lg->port_id[1] = area;
+	lg->port_id[2] = domain;
+	lg->vp_index = vha->vp_idx;
+
+	/*
+	 * ISP expects the FC payload in Login/Logout Port IOCB
+	 * to be in little endian.
+	 */
+	lg->io_parameter[0] = cpu_to_le32((s_id.b.domain << 16) |
+					  (s_id.b.area << 8) |
+					   s_id.b.al_pa);
+	wwpn = cpu_to_le64(wwn_to_u64(s_port_name));
+	lg->io_parameter[1] = (wwpn >> 32) & 0xFFFFFFFF;
+	lg->io_parameter[2] = wwpn & 0xFFFFFFFF;
+
+	rval = qla2x00_issue_iocb(vha, lg, lg_dma, 0);
+	if (rval != QLA_SUCCESS) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1162,
+		       "%s(%ld): failed to issue Logout IOCB "
+		       "(%x).\n", __func__, vha->host_no, rval);
+	} else if (lg->entry_status != 0) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1163,
+		       "%s(%ld): failed to complete IOCB "
+		       "-- error status (%x).\n", __func__, vha->host_no,
+		       lg->entry_status);
+		rval = QLA_FUNCTION_FAILED;
+	} else if (lg->comp_status != __constant_cpu_to_le16(CS_COMPLETE)) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1164,
+		       "%s(%ld): failed to complete IOCB "
+		       "-- completion status (%x)  ioparam=%x/%x.\n", __func__,
+		       vha->host_no, le16_to_cpu(lg->comp_status),
+		       le32_to_cpu(lg->io_parameter[0]),
+		       le32_to_cpu(lg->io_parameter[1]));
+	} else {
+		/*EMPTY*/
+		  ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1165,
+			 "%s(%ld): done.\n", __func__, vha->host_no);
+	}
+
+	dma_pool_free(ha->s_dma_pool, lg, lg_dma);
+
+	return rval;
+}
+EXPORT_SYMBOL(qla24xx_logo);
+
+/*
+ * Perform an explicit PRLO
+ *
+ * Input:
+ *
+ *           ha = adapter block pointer.
+ *           loop_id = loop_id of destination device.
+ *           domain = domain of destination device.
+ *           area = area of destination device.
+ *           alpa = alpa of destination device.
+ *
+ * Returns:
+ *            Return status code.
+ */
+int
+qla24xx_prlo(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
+    uint8_t area, uint8_t al_pa)
+{
+	int             rval;
+	struct logio_entry_24xx *lg;
+	dma_addr_t      lg_dma;
+	struct qla_hw_data *ha = vha->hw;
+
+	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1166,
+	       "%s(%ld): entered id=%02x%02x%02x lid=%x.\n", __func__,
+		vha->host_no, domain,area,al_pa, loop_id);
+
+	lg = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL, &lg_dma);
+	if (lg == NULL) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1167,
+		       "%s(%ld): failed to allocate PRLO IOCB.\n",
+		       __func__, vha->host_no);
+		return QLA_MEMORY_ALLOC_FAILED;
+	}
+	memset(lg, 0, sizeof(struct logio_entry_24xx));
+
+	lg->entry_type = LOGINOUT_PORT_IOCB_TYPE;
+	lg->entry_count = 1;
+	lg->nport_handle = cpu_to_le16(loop_id);
+	lg->control_flags =
+	    __constant_cpu_to_le16(LCF_COMMAND_PRLO);
+	lg->port_id[0] = al_pa;
+	lg->port_id[1] = area;
+	lg->port_id[2] = domain;
+	lg->vp_index = vha->vp_idx;
+
+	/*
+	 * ISP expects the FC payload in Login/Logout Port IOCB
+	 * to be in little endian.
+	 */
+	lg->io_parameter[0] = __constant_cpu_to_le32(0x21100014);
+	lg->io_parameter[1] = __constant_cpu_to_le32(0x08000000);
+
+	rval = qla2x00_issue_iocb(vha, lg, lg_dma, 0);
+	if (rval != QLA_SUCCESS) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1168,
+		       "%s(%ld): failed to issue PRLO IOCB "
+		       "(%x).\n", __func__, vha->host_no, rval);
+	} else if (lg->entry_status != 0) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1169,
+		       "%s(%ld): failed to complete IOCB "
+		       "-- error status (%x).\n", __func__, vha->host_no,
+		       lg->entry_status);
+		rval = QLA_FUNCTION_FAILED;
+	} else if (lg->comp_status != __constant_cpu_to_le16(CS_COMPLETE)) {
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x116a,
+		       "%s(%ld): failed to complete IOCB "
+		       "-- completion status (%x)  ioparam=%x/%x.\n", __func__,
+		       vha->host_no, le16_to_cpu(lg->comp_status),
+		       le32_to_cpu(lg->io_parameter[0]),
+		       le32_to_cpu(lg->io_parameter[1]));
+	} else {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x116b,
+		       "%s(%ld): done.\n", __func__, vha->host_no);
+	}
+
+	dma_pool_free(ha->s_dma_pool, lg, lg_dma);
+
+	return rval;
+}
+EXPORT_SYMBOL(qla24xx_prlo);
+
+
 
 /*
  * qla2x00_fabric_logout
@@ -2204,6 +2637,7 @@ qla2x00_get_id_list(scsi_qla_host_t *vha, void *id_list, dma_addr_t id_list_dma,
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
+	struct qla_hw_data *ha = vha->hw;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1079,
 	    "Entered %s.\n", __func__);
@@ -2229,12 +2663,14 @@ qla2x00_get_id_list(scsi_qla_host_t *vha, void *id_list, dma_addr_t id_list_dma,
 		mcp->out_mb |= MBX_6|MBX_3|MBX_2|MBX_1;
 	}
 	mcp->in_mb = MBX_1|MBX_0;
-	mcp->tov = MBX_TOV_SECONDS;
+	mcp->tov = (ha->login_timeout * 2) + (ha->login_timeout / 2);
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
 
 	if (rval != QLA_SUCCESS) {
-		/*EMPTY*/
+		if ((mcp->mb[0] == MBS_COMMAND_ERROR) &&
+		    (mcp->mb[1] == 0x7))
+			rval = QLA_FW_NOT_READY;
 		ql_dbg(ql_dbg_mbx, vha, 0x107a, "Failed=%x.\n", rval);
 	} else {
 		*entries = mcp->mb[1];
@@ -2244,6 +2680,7 @@ qla2x00_get_id_list(scsi_qla_host_t *vha, void *id_list, dma_addr_t id_list_dma,
 
 	return rval;
 }
+EXPORT_SYMBOL(qla2x00_get_id_list);
 
 /*
  * qla2x00_get_resource_cnts
@@ -2460,6 +2897,15 @@ qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1088,
 	    "Entered %s.\n", __func__);
+
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	if (!qla_tgt_mode_enabled(vha) && !qla_ini_mode_enabled(vha)) {
+		printk("%s(%ld): neither initiator, nor target "
+			"mode enabled, no stats returned\n",
+			__func__, vha->host_no);
+		return QLA_FUNCTION_FAILED;
+	}
+#endif
 
 	mcp->mb[0] = MBC_GET_LINK_PRIV_STATS;
 	mcp->mb[2] = MSW(stats_dma);
@@ -3186,6 +3632,7 @@ qla2x00_set_idma_speed(scsi_qla_host_t *vha, uint16_t loop_id,
 		mcp->mb[3] = port_speed & (BIT_5|BIT_4|BIT_3|BIT_2|BIT_1|BIT_0);
 	else
 		mcp->mb[3] = port_speed & (BIT_2|BIT_1|BIT_0);
+	mcp->mb[4] = mcp->mb[5] = 0;
 	mcp->mb[9] = vha->vp_idx;
 	mcp->out_mb = MBX_9|MBX_3|MBX_2|MBX_1|MBX_0;
 	mcp->in_mb = MBX_3|MBX_1|MBX_0;
@@ -3198,6 +3645,8 @@ qla2x00_set_idma_speed(scsi_qla_host_t *vha, uint16_t loop_id,
 		mb[0] = mcp->mb[0];
 		mb[1] = mcp->mb[1];
 		mb[3] = mcp->mb[3];
+		mb[4] = mcp->mb[4];
+		mb[5] = mcp->mb[5];
 	}
 
 	if (rval != QLA_SUCCESS) {
@@ -3353,6 +3802,14 @@ qla24xx_modify_vp_config(scsi_qla_host_t *vha)
 	vpmod->vp_count = 1;
 	vpmod->vp_index1 = vha->vp_idx;
 	vpmod->options_idx1 = BIT_3|BIT_4|BIT_5;
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	/* Enable target mode */
+	if (qla_tgt_mode_enabled(vha))
+		vpmod->options_idx1 &= ~BIT_5;
+	/* Disable ini mode, if requested */
+	if (!qla_ini_mode_enabled(vha))
+		vpmod->options_idx1 &= ~BIT_4;
+#endif
 	memcpy(vpmod->node_name_idx1, vha->node_name, WWN_SIZE);
 	memcpy(vpmod->port_name_idx1, vha->port_name, WWN_SIZE);
 	vpmod->entry_count = 1;
@@ -4937,7 +5394,7 @@ qla83xx_configure_vfs(scsi_qla_host_t *vha)
 		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x112c,
 		    "Done %s.\n", __func__);
 
-        dma_free_coherent(&ha->pdev->dev, vf_cfgblk_size, buf, buf_dma);
+	dma_free_coherent(&ha->pdev->dev, vf_cfgblk_size, buf, buf_dma);
 	return rval;
 }
 
@@ -5171,8 +5628,7 @@ qla81xx_get_led_config(scsi_qla_host_t *vha, uint16_t *led_cfg)
 			led_cfg[4] = mcp->mb[5];
 			led_cfg[5] = mcp->mb[6];
 		}
-		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1138,
-		    "Done %s.\n", __func__);
+		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1138, "Done %s\n", __func__);
 	}
 
 	return rval;

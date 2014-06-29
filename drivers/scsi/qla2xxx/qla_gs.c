@@ -5,6 +5,7 @@
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
 #include "qla_def.h"
+#include "qla2x_tgt.h"
 #include <linux/utsname.h>
 
 static int qla2x00_sns_ga_nxt(scsi_qla_host_t *, fc_port_t *);
@@ -566,6 +567,17 @@ qla2x00_rff_id(scsi_qla_host_t *vha)
 	ct_req->req.rff_id.port_id[1] = vha->d_id.b.area;
 	ct_req->req.rff_id.port_id[2] = vha->d_id.b.al_pa;
 
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+	/*
+	 * FC-4 Feature bit 0 indicates target functionality to the name server.
+	 */
+	if (qla_tgt_mode_enabled(vha)) {
+		if (qla_ini_mode_enabled(vha))
+			ct_req->req.rff_id.fc4_feature = BIT_0 | BIT_1;
+		else
+			ct_req->req.rff_id.fc4_feature = BIT_0;
+	} else if (qla_ini_mode_enabled(vha))
+#endif
 	ct_req->req.rff_id.fc4_feature = BIT_1;
 	ct_req->req.rff_id.fc4_type = 0x08;		/* SCSI - FCP */
 
@@ -1448,9 +1460,9 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 	eiter = entries + size;
 	eiter->type = __constant_cpu_to_be16(FDMI_HBA_FIRMWARE_VERSION);
 	ha->isp_ops->fw_version_str(vha, eiter->a.fw_version,
-	    sizeof(eiter->a.fw_version));
+					sizeof(eiter->a.fw_version));
 	alen = strlen(eiter->a.fw_version);
-	alen += 4 - (alen & 3);
+	alen += (alen & 3) ? (4 - (alen & 3)) : 4;
 	eiter->len = cpu_to_be16(4 + alen);
 	size += 4 + alen;
 
