@@ -1,0 +1,155 @@
+                            Fibre Channel Target Mode Adapter Driver Update
+                                           Release Notes
+
+                                        QLogic Corporation.
+                                        All rights reserved.
+
+Table of Contents
+
+ 1. Version
+ 2. Changes
+ 3. Bug Fixes
+ 4. Known Issues
+ 5. History
+ 6. Additional Information
+ 7. Trademarks
+ 8. Notices
+ 9. Contacting Support
+
+
+1. Version
+
+These release notes describe the changes, fixes, known issues, and
+release details that apply to Fibre Channel and FCoE Adapter Inbox
+Driver Update based on the following Linux Kernel versions (3.10.x).
+
+    RHEL 7.0  -- 8.07.00.11.Trunk-SCST.13-k
+
+2. Changes
+
+The following changes have been made to the Fibre Channel Target Mode
+Adapter Driver Update based for SCST with Trunk ID 5543. 
+
+	git-svn-id: http://svn.code.sf.net/p/scst/svn/trunk@5543
+	  d57e44dd-8a1f-0410-8b47-8ef2f437770f
+
+
+Hardware Support
+
+N/A
+
+OS Support
+
+N/A
+
+Software/Driver
+
+ * ISP83xx(16G FC/10G FCoE), ISP25xx(8G FC)
+
+ * Enhancements to support ISP83xx (Limited support).
+
+    * Driver features supported
+        * Port device discovery
+        * LUN discovery
+        * I/O
+
+    * Driver features not supported
+        * Beacon support
+        * Loopback
+        * T10 DIX/DIF
+        * SFP read/write
+        * Multi-Queue
+        * Boot from SAN
+        * FC-Tape
+        * SLES10.3 driver:
+            * Fix not to MPI reset on ISP83xx is not included.
+
+ * Implemeted beacon on/off for ISP82xx.
+
+ * Provide method for updating I2C attached VPD.
+
+ * Resync with latest ISP24xx/25xx firmware (5.06.05).
+
+Industry Standards Compliance
+
+N/A
+
+3. Bug Fixes
+
+N/A
+
+4. Known Issues
+    
+* Extended Login support:
+    - This FW feature is currently implemented in Hilda base adapter(ISP83xx/
+    10G FCoE/16G FC).
+    - To turn on this feature on, set the driver parameter ql2xexlogins to
+    a value of extra logins beyond the 2048 limit.
+
+* Laser Control:
+    - This feature applies to FC link only (not FCoE)    
+    - It works for 8G/ISP25xx and 16G/ISP2031 adapter.
+
+
+
+5. History
+
+* Initial release 8.07.00.11.Trunk-SCST.13-k
+
+    Refer to "Known Issues" for caveat.
+
+
+
+6. Additional Information
+
+
+
+7. Trademarks
+
+Accelera, Accelerating Cluster Performance, FastFabric, InfiniCon
+Systems, InfiniNIC, InfiniPath, InfiniView, Intelligent NIC,
+Networking University, NetXen, QLA, QLogic, the QLogic logo,
+ReadyPath, SANdoctor, SANsurfer, and SilverStorm are registered
+trademarks of QLogic Corporation. To the extent a name or logo does
+not appear on this list does not constitute a waiver of any and all
+intellectual property rights that QLogic Corporation or its
+subsidiaries has established in any of its product, feature, or
+service names or logos. All other brand and product names are
+trademarks or registered trademarks of their respective owners.
+
+8. Notices
+
+Information furnished in this document is believed to be accurate and
+reliable. However, QLogic Corporation assumes no responsibility for
+its use, nor for any infringements of patents or other rights of
+third parties which may result from its use. QLogic Corporation
+reserves the right to change product specifications at any time
+without notice. Applications described in this document for any of
+these products are only for illustrative purposes. QLogic Corporation
+makes no representation nor warranty that such applications are
+suitable for the specified use without further testing or
+modification. QLogic Corporation assumes no responsibility for any
+errors that may appear in this document.
+
+
+9. Contacting Support
+
+Please feel free to contact your QLogic approved reseller or QLogic
+Technical Support at any phase of integration for assistance. QLogic
+Technical Support can be reached by the following methods:
+
+ Web: http://support.qlogic.com
+ Email: support@qlogic.com
+
+(c) Copyright 2012. All rights reserved worldwide. QLogic, the QLogic
+logo, and the Powered by QLogic logo are registered trademarks of
+QLogic Corporation. All other brand and product names are trademarks
+or registered trademarks of their respective owners.
+
+Information furnished in this document is believed to be accurate and
+reliable. However, QLogic Corporation assumes no responsibility for
+its use, nor for any infringements of patents or other rights of
+third parties which may result from its use. QLogic Corporation
+reserves the right to change product specifications at any time
+without notice. Applications described in this document for any of
+these products are only for illustrative purposes. QLogic Corporation

@@ -1,0 +1,492 @@
+
+    Fibre Channel Adapter Target Mode Driver
+            Update for SCST Trunk
+
+			        Readme
+
+			 QLogic Corporation
+			 All rights reserved
+
+
+Table of Contents
+
+1. Source Contents
+2. OS Support
+3. Supported Features
+4. Preparing for building SCST & Qlogic driver on RHEL 7.0
+   4.1 Install RHEL 7.0
+   4.2 Download QLogic Source and SCST source
+5. Building, installing, configuring and loading SCST & Qlogic driver
+   5.1 Building & installing SCST & driver modules
+   5.2 Configuring targets in scst.conf file
+   5.3 Loading SCST & QLogic driver modules
+   5.4 Manually load the driver for Linux Using insmod or modprobe.
+   5.5 Automatically load the driver by rebuilding the RAM disk to
+       include the driver.
+6. Driver System Parameters
+   6.1 SCST specific driver parameters
+7. Additional Notes
+   7.2 Firmware Installation
+   7.3 Dynamically Modifying SCSI Blacklist Entries
+8. Tunables
+   8.1 Queue rate monitoring
+9. Diagnostics
+   9.1 General diagnostic script
+   9.2 Performance diagnostic script
+10. Contacting Support
+
+1. Source Contents
+
+refer to "git://git.qlogic.com/scst-qla2xxx.git" for source repository.
+
+This is a QLogic's provided SCST development repository.  It contains
+QLogic's Initiator(qla2xxx_scst.ko) and Target Mode(qla2x00t.ko) device drivers 
+source.  
+
+These drivers are part of the larger SCST Target Mode infrastructure.
+These drivers provide Fibre Channel fabric connection to SCST infrastructure.
+
+For additional info on SCST Target Mode, refer to the following URLs:
+
+Home page: http://scst.sourceforge.net/
+SCST Source page: http://sourceforge.net/p/scst/svn/HEAD/tree/
+
+
+2. OS Support
+
+The Fibre Channel Adapter Target Mode Driver for Linux is compatible with the
+following OS 
+
+ * Red Hat Enterprise Linux 7.0 (32-bit, 64-bit) on Intel x86, Intel 64, AMD64
+
+2.1 Tested setup
+
+ * Red Hat Enterprise Linux 7.0 (initiators, targets)
+ * Qlogic: 8G/QLE25xx, 16G FC/10G FCoE/QLE83xx
+ * HP Proliant DL380 G7/G8
+
+3. Supported Features
+
+ * direct attach loop, point-to-point, and fabric topologies
+ * Initiator and Target mode
+ * Fibre Channel tape
+ * MSI-X interrupts
+ * Support for sysfs interface
+
+
+4. Preparing for building SCST & Qlogic driver on RHEL 7.0
+
+This section provides modified procedures from
+http://scst.sourceforge.net/qla2x00t-howto.html on how to retrieve and
+configure SCST for the latest QLogic Linux driver offering for target mode:
+
+ * 4.1 Install RHEL 7.0
+ * 4.2 Download QLogic Source and SCST source
+
+4.1 Install RHEL 7.0
+4.1.1 Perform normal installation of RHEL 7.0
+
+4.1.2 Install additional binary packages for driver compilation.
+
+    # yum install kernel-devel kernel-tools kernel-headers git
+
+
+4.2 Download QLogic Source and SCST source.
+4.2.1. Download Qlogic source.
+
+    # cd /root
+    # git clone git://git.qlogic.com/scst-qla2xxx.git 
+
+4.2.2 Download SCST Sources and create local source branch "mytrunk".
+
+    # cd /root
+    # mkdir scst_src
+    # cd scst_src
+    # git svn init -t tags -b branches -T trunk http://svn.code.sf.net/p/scst/svn
+    # git svn fetch
+    # git checkout -b mytrunk remotes/origin/trunk
+
+
+5. Building, installing, configuring and loading SCST & Qlogic driver
+This section provides procedures for building the driver on various 
+Linux versions, including the following:
+  * 5.1 Building & installing SCST & driver modules
+  * 5.2 Configuring targets in scst.conf file
+  * 5.3 Loading SCST & QLogic driver modules
+  * 5.4 Manually load the driver for Linux Using insmod or modprobe.
+  * 5.5 Automatically load the driver by rebuilding the RAM disk to
+        include the driver.
+
+5.1 Building & installing SCST & QLogic driver modules
+This section describes how to build and install driver modules
+
+    1. Build SCST and install SCST drivers, include files
+       (/usr/local/include/scst/*), and scstadmin utility.
+
+       # cd /root/scst_src/
+       # make scst 
+       # make scst_install
+       # make scstadm_install 
+
+    2. Check to see if SCST driver have been installed.
+       # ls /lib/modules/`uname -r`/extra/scst.ko
+       # ls /lib/modules/`uname -r`/extra/dev_handlers/scst*
+
+    3. Check to see if SCST include files have been installed.
+       # ls /usr/local/include/scst/
+    
+    4. Build and install Qlogic drivers.
+       NOTE: The steps above must succeed before building QLogic drivers
+
+       # cd /root/scst-qla2xxx
+       # make all
+    
+    3. Verify that compilation and installation succeeded:
+       # ls -l /lib/modules/`uname -r`/extra/qla2*
+
+    The kernel modules have been installed in
+        '/lib/modules/`your_kernel_version`/extra'.
+    In addition, scst.h, scst_debug.h as well as Module.symvers or
+    Modules.symvers have been copied to '/usr/local/include/scst'.  The first
+    file contains all SCST's public interfaces used by target drivers. The
+    other files allow target drivers to generate debug messages and support the
+    kernel module build process.
+    
+    [root@proj scst_src]# ls -l /lib/modules/`uname -r`/extra
+    
+    [root@proj scst_src]# ls -l /lib/modules/`uname -r`/extra/dev_handlers
+    
+    where:
+    
+        scst - SCST itself.
+        scst_disk - device handler for disks (type 0).
+        scst_tape - device handler for tapes (type 1).
+        scst_processor - device handler for processors (type 3).
+        scst_cdrom - device handler for CDROMs (type 5).
+        scst_modisk - device handler for MO disks (type 7).
+        scst_changer - device handler for medium changers (type 8).
+        scst_raid - device handler for storage array controller (e.g. raid)
+                    (type C).
+        scst_vdisk - device handler for virtual disks (file, device or ISO CD
+                    image)..
+        scst_user - user space device handler.
+    
+    You can insert any of these kernel modules with the 'modprobe' program.
+     
+5.2. Manually load the driver for Linux Using insmod or modprobe.
+
+    * Inbox driver need to be unloaded.
+       # rmmod qla2xxx
+
+    * For SLES 11 only, edit the /etc/modprobe.d/unsupported_modules
+      file to make the following change:
+
+       allow_unsupported_modules 1  (replace 0 by 1)
+
+    * To directly load the driver from the local build directories,
+      issue the following insmod commands in order:
+
+       # insmod /lib/modules/`uname -r`/extra/scst.ko
+         (if not already loaded)
+
+       # insmod /lib/modules/`uname -r`/extra/scst_vdisk.ko
+         (if not already loaded)
+
+       # insmod /lib/modules/`uname -r`/kernel/drivers/scsi/
+          scsi_transport_fc.ko (if not already loaded)
+
+       # insmod /lib/modules/`uname -r`/extra/qla2xxx_scst.ko
+       # insmod /lib/modules/`uname -r`/extra/qla2x00tgt.ko
+
+    * To load the driver using modprobe, issue the following command:
+
+       # modprobe -v qla2xxx_scst
+
+    * To unload the driver using modprobe, issue the following
+      command:
+
+       # modprobe -r qla2xxx_scst
+
+5.3. Automatically load the driver by rebuilding the RAM disk to
+    include the driver.
+
+    * Create a copy of the current RAMDISK by issuing the following
+      commands:
+
+       # cd /boot
+
+       # cp initrd-[kernel version].img initrd-[kernel
+          version].img.bak
+
+       # mkinitrd
+
+      NOTE: Depending on the server hardware, the RAMDISK file name
+            may be different.
+
+    * To load the driver, reboot the host.
+
+5.4. Configuring targets and luns in scst.conf file
+    Modify TARGET WWN below to match with the WWN of the configured initiator
+    port. Refer to http://scst.sourceforge.net/ for more information.
+
+    --8<-- save below to /etc/scst.conf --
+    HANDLER vdisk_fileio {
+        DEVICE disk1 {
+            filename /mnt/disk1
+        }
+    }
+    
+    TARGET_DRIVER qla2x00t {
+        TARGET 25:00:00:f0:98:87:92:f3 {
+            LUN 0 disk1
+    
+            enabled 1
+        }
+    }
+    --8<--
+    See scstadmin(1) for additional information on administration and
+    configuration of SCST.
+
+5.3 Loading SCST & QLogic driver modules
+    Start SCST & QLogic driver by running:
+
+    # /etc/init.d/scst start
+
+
+
+6. Driver System Parameters
+
+The driver gets its parameters when specified with the insmod command.
+For example:
+
+ # insmod qla2xxx_scst.ko ql2xextended_error_logging=1
+
+If using the modprobe command, you must specify the parameters in the
+/etc/modprobe.conf file for RHEL 5.x, /etc/modprobe.d/modprobe.conf for RHEL
+6.x, and /etc/modprobe.conf.local for SLES 11.1/11.2. For example:
+
+ options qla2xxx_scst ql2xextended_error_logging=1
+
+Parameters for the Linux driver include the following:
+
+ * ql2xlogintimeout - Defines the login timeout value in seconds 
+   during the initial login. Default: 20 seconds
+
+ * qlport_down_retry - Defines how long to wait for a port that 
+   returns a PORT-DOWN status before returning I/O back to the OS.
+   Default: 30 seconds
+
+ * ql2xplogiabsentdevice - Enables PLOGI to devices that are not 
+   present after a Fabric scan. This is needed for several broken
+   switches. Default is 0 - no PLOGI. 1 - perfom PLOGI.
+
+ * ql2xloginretrycount - Specifies an alternate value for the NVRAM
+   login retry count. Default is 8.
+
+ * ql2xallocfwdump - Enables allocation of memory for a firmware dump
+   during initialization. Memory allocation requirements vary by type.
+   Default is 1 - allocate memory.
+
+ * ql2xextended_error_logging - Defines whether the driver prints 
+   verbose logging information. 0 to disable; 1 to enable. Default: 0.
+
+ * ql2xfdmienable - Enables FDMI registrations  
+   Default is 0 - no FDMI. 1 - perfom FDMI.
+
+ * ql2xmaxqdepth - Defines the maximum queue depth reported to SCSI 
+   mid-level per device. The Queue depth specifies the number of 
+   outstanding requests per LUN. Default is 32.
+
+ * ql2xqfullrampup - Number of seconds to wait to begin to ramp-up 
+   of the queue depth for a device after a queue-full condition has 
+   been detected. Default is 120 seconds.
+
+ * ql2xqfulltracking - Controls whether the driver tracks queue full
+   status returns and dynamically adjusts a SCSI device's queue depth.
+   Default is 1 to perform tracking. Set to 0 to disable tracking and
+   adjustment of queue.
+
+ * ql2xfwloadbin - Specifies location from which to load ISP firmware.
+    2 - load firmware via the request_firmware() interface.
+    1 - load firmware from Flash.
+    0 - use default semantics.
+
+To view a comprehensive list of parameters, enter the following
+command:
+
+ # /sbin/modinfo qla2xxx_scst
+
+6.1 SCST specific driver parameters
+
+ * qla_q_rate - Turns on monitoring of queue (atio, request, response)
+   rates (requests in / out). For more information, see 8.1.
+
+ * qla_q_rate_limit - This is used in conjunction with qla_q_rate.C
+   For more information, see 8.1.
+
+7. Additional Notes
+
+The following sections contain additional information:
+
+ * 7.1 Firmware Installation
+ * 7.2 Dynamically Modifying SCSI Blacklist Entries
+
+7.1 Firmware Installation
+
+To install a firmware RPM on a:
+
+1. Save original firmwares in /lib/firmware:
+
+$ cd /
+$ cp /lib/firmware/ql2400_fw.bin /lib/firmware/ql2400_fw.bin.orig
+$ cp /lib/firmware/ql2500_fw.bin /lib/firmware/ql2500_fw.bin.orig
+
+2. Extract firmware:
+
+$ rpm -Uvh --force qlogic-firmware-x.yy.zz.noarch.rpm
+
+7.3 Dynamically Modifying SCSI Blacklist Entries
+
+On 2.6.x kernels, you can dynamically change the SCSI blacklist,
+either by writing to a /proc entry or using the scsi_mod module
+parameter, which allows persistence across reboot.
+
+This requires the SCSI Vendor/Model information for the SCSI device,
+available at /proc/scsi/scsi.
+
+Blacklist entries are in the following form:
+
+ vendor:model:flags[v:m:f]
+
+Where flags can be the following integer values:
+
+ 0x001    /* Only scan LUN 0 */
+ 0x002    /* Known to have LUNs, force scanning, deprecated: Use 
+             max_luns=N */
+ 0x004    /* Flag for broken handshaking */
+ 0x008    /* unlock by special command */
+ 0x010    /* Do not use LUNs in parallel */
+ 0x020    /* Buggy Tagged Command Queuing */
+ 0x040    /* Non-consecutive LUN numbering */
+             - -> value need to be passed to "flags" variable for
+             sparse LUN
+ 0x080    /* Avoid LUNS >= 5 */
+ 0x100    /* Treat as (removable) CD-ROM */
+ 0x200    /* LUNs past 7 on a SCSI-2 device */
+ 0x400    /* override additional length field */
+ 0x800    /* ... for broken inquiry responses */
+ 0x1000   /* do not do automatic start on add */
+ 0x2000   /* do not send ms page 0x08 */
+ 0x4000   /* do not send ms page 0x3f */
+ 0x8000   /* use 10 byte ms before 6 byte ms */
+ 0x10000  /* 192 byte ms page 0x3f request */
+ 0x20000  /* try REPORT_LUNS even for SCSI-2 devs (if supports more
+             than 8 LUNs) */
+ 0x40000  /* don't try REPORT_LUNS scan (SCSI-3 devs) */
+ 0x80000  /* don't use PREVENT-ALLOW commands */
+ 0x100000 /* device is actually for RAID config */
+ 0x200000 /* select without ATN */
+ 0x400000 /* retry HARDWARE_ERROR */
+
+For example:
+
+ # echo <VENDOR>:<MODEL>:040  > /proc/scsi/device_info
+
+To enable persistence across reboots:
+
+ 1. Edit the following file (based on distribution):
+
+   /usr/lib/modprobe.d/dist-blacklist.conf for RHEL 7
+
+ 2. Add the following line to the file:
+
+     options scsi_mod  dev_flags=<VENDOR>:<MODEL>:<FLAGS>
+
+ 3. Rebuild the RAMDISK (refer to section 4.3, step 4).
+
+8. Tunables
+8.1 Queue rate monitoring
+    qla2xxx_scst driver internal queue rates can be monitored by turning
+    on the driver parameter qla_q_rate.
+
+    Following qla2xxx_scst module parameter has been added for this:
+        qla_q_rate (0/1)    : This turns on or off the queue rate monitoring
+        qla_q_rate_limit    : Queue rate history tracking starts when IO
+                              rate exceeds this (default 20k).
+
+    Queue rate can be monitored by reading the below mentioned nodes under
+    /sys/kernel/debug/qla2xxx/qla2xxx_<host#>
+        q_rate      : Keeps track of the queue rates for the last second.
+        q_rate_hist : Keeps track of the queue rates for 60 seconds starting
+                      when the IO rate exceeds qla_q_rate_limit.
+
+    Debugfs needs to be enabled during kernel compile time (most distros
+    has this turned on) and mounted for this to work. To mount:
+        # mount -t debugfs none /sys/kernel/debug
+
+    To turn on q rate in qla2xxx_scst driver:
+        # echo 1 > /sys/module/qla2xxx_scst/parameters/qla_q_rate
+
+    Helpful commandline to monitor queue rates for all target ports:
+        # watch -n1 "head /sys/kernel/debug/qla2xxx/qla2xxx_*/q_rate"
+
+    To watch q rate history:
+        # cat /sys/kernel/debug/qla2xxx/qla2xxx_<host#>/q_rate_hist
+
+    To reset q rate history:
+        # echo 0 > /sys/kernel/debug/qla2xxx/qla2xxx_<host#>/q_rate_hist
+
+8.2 Loop Back support
+    qla2x00t driver provides loopback capability to measure firmware
+    performance with minimal driver interaction specific to read/write
+    of small block 4k and less.
+
+    To enable, uncomment #define of QLT_LOOP_BACK in qla_def.h and recompile.
+    
+    Tunables (module parameters) to tweak:
+        qlb_enabled     : set 1 to enable loopback (off by default)
+        qlb_num_reads   : Number of reads bypasssed statistic
+        qlb_num_writes  : Number of writes bypasssed statistic
+        qlb_lba_low     : Only reads/writes >= this will be loopbacked (default 0)
+        qlb_lba_high    : Only reads/writes <= this will be loopbacked
+                          (default 0xffffffff)
+
+
+    For 1 CTIO write:
+     echo 0 > /sys/module/qla2x00tgt/parameters/fcp_rsp_wr
+    
+    For 2 CTIO's write:
+     echo 1 > /sys/module/qla2x00tgt/parameters/fcp_rsp_wr
+
+
+9. Diagnostics
+9.1 General diagnostic script
+   A general diagnostic script is included with the source and can be found
+   here:
+        /root/qla2xx/extras/qdiag.sh
+   The script collects general system diagnostic information. Please provide
+   the output file generated by the script when reporting issues.
+
+9.2 Performance diagnostic script
+   A performance diagnostic interactive script is included with the source
+   and can be found here:
+        /root/qla2xx/extras/qscst.sh
+   The script interactively allows user to run performance test and gathers
+   performance/system statistics. Please provide the output file generated
+   by the script when reporting performance related issues. There is no
+   need to run qdiag.sh along with this, this script runs it internally.
+
+10. Contacting Support
+
+Please feel free to contact your QLogic approved reseller or QLogic 
+Technical Support at any phase of integration for assistance. QLogic
+Technical Support can be reached by the following methods: 
+
+ Web:    http://support.qlogic.com
+ E-mail: support@qlogic.com
+
+
+(c) Copyright 2012. All rights reserved worldwide. QLogic, the QLogic 
+logo, and the Powered by QLogic logo are registered trademarks of
+QLogic Corporation. All other brand and product names are trademarks 
+or registered trademarks of their respective owners. 
