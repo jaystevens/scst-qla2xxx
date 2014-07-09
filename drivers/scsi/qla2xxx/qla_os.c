@@ -3185,9 +3185,9 @@ qla2x00_remove_one(struct pci_dev *pdev)
 
 	qla2x00_free_device(base_vha);
 
-	scsi_host_put(base_vha->host);
-
 	qla2x00_clear_drv_active(base_vha);
+
+	scsi_host_put(base_vha->host);
 
 	qla2x00_unmap_iobases(ha);
 
