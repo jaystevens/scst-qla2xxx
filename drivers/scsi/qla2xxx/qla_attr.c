@@ -798,9 +798,7 @@ qla2x00_laser_show(struct device *dev, struct device_attribute *attr,
 /* end of laser */
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 35) && \
-	(!defined(RHEL_RELEASE_CODE) || \
-		RHEL_RELEASE -0 < RHEL_RELEASE_VERSION(6,1))
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
 qla2x00_sysfs_read_fw_dump(
 #else
 qla2x00_sysfs_read_fw_dump(struct file *filp,
