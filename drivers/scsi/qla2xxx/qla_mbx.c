@@ -1441,7 +1441,7 @@ qla2x00_get_node_name_list(scsi_qla_host_t *vha, void **out_data, int *out_len)
 	BUILD_BUG_ON(sizeof(struct qla_port24_data) <
 		     sizeof(struct qla_port23_data));
 
-	left = 1;
+	left = 32;
 	while (left > 0) {
 		dma_size = left * sizeof(*list);
 		pmap = dma_alloc_coherent(&ha->pdev->dev, dma_size,
@@ -1452,6 +1452,7 @@ qla2x00_get_node_name_list(scsi_qla_host_t *vha, void **out_data, int *out_len)
 			rval = QLA_MEMORY_ALLOC_FAILED;
 			goto out;
 		}
+		memset(pmap, 0, dma_size);
 
 		mc.mb[0] = MBC_PORT_NODE_NAME_LIST;
 		mc.mb[1] = BIT_1 | BIT_3;
@@ -1460,8 +1461,9 @@ qla2x00_get_node_name_list(scsi_qla_host_t *vha, void **out_data, int *out_len)
 		mc.mb[6] = MSW(MSD(pmap_dma));
 		mc.mb[7] = LSW(MSD(pmap_dma));
 		mc.mb[8] = dma_size;
-		mc.out_mb = MBX_0|MBX_1|MBX_2|MBX_3|MBX_6|MBX_7|MBX_8;
-		mc.in_mb = MBX_0|MBX_1;
+		mc.mb[9] = vha->vp_idx;
+		mc.out_mb = MBX_0|MBX_1|MBX_2|MBX_3|MBX_6|MBX_7|MBX_8|MBX_9;
+		mc.in_mb = MBX_0|MBX_1|MBX_2;
 		mc.tov = 30;
 		mc.flags = MBX_DMA_IN;
 
