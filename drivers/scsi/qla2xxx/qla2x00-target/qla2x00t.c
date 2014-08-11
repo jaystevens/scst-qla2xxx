@@ -1911,6 +1911,9 @@ static void q2x_send_notify_ack(scsi_qla_host_t *vha, notify_entry_t *iocb,
 
 	TRACE_ENTRY();
 
+	if (qla2x00_reset_active(vha))
+		goto out;
+
 	TRACE_DBG("Sending NOTIFY_ACK (vha=%p)", vha);
 
 	/* Send marker if required */
@@ -2260,6 +2263,9 @@ static void q24_send_notify_ack(scsi_qla_host_t *vha,
 	nack24xx_entry_t *nack;
 
 	TRACE_ENTRY();
+
+	if (qla2x00_reset_active(vha))
+		goto out;
 
 	TRACE_DBG("qla2x00t(%ld): Sending NOTIFY_ACK24 (vha=%p) ox_id=0x%04x",
 		vha->host_no, vha, iocb->ox_id);
