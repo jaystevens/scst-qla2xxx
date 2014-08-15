@@ -3951,6 +3951,12 @@ q2t_host_reset_handler(struct qla_hw_data *ha)
 		vha = cmd->tgt->ha;
 		q2t_abort_cmd_on_host_reset(vha, cmd);
 	}
+
+	list_for_each_entry(vha, &ha->vp_list, list) {
+		if (vha && vha->vha_tgt.tgt)
+			q2t_all_sess_down(vha->vha_tgt.tgt);
+	}
+
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
