@@ -37,20 +37,40 @@ Table of Contents
 
 1. Source Contents
 
-refer to "git://git.qlogic.com/scst-qla2xxx.git" for source repository.
+This readme is part of the following respository 
+"git://git.qlogic.com/scst-qla2xxx.git".
 
-This is a QLogic's provided SCST development repository.  It contains
-QLogic's Initiator(qla2xxx_scst.ko) and Target Mode(qla2x00t.ko) device drivers 
-source.  
+The content of this repository is a QLogic's provided SCST driver
+development kit.  It contains QLogic's Initiator(qla2xxx_scst.ko)
+and Target Mode(qla2x00t.ko) device drivers source.  
 
 These drivers are part of the larger SCST Target Mode infrastructure.
-These drivers provide Fibre Channel fabric connection to SCST infrastructure.
+These drivers provide FC & FCoE fabric connection to SCST core.
 
 For additional info on SCST Target Mode, refer to the following URLs:
 
-Home page: http://scst.sourceforge.net/
+SCST Home page: http://scst.sourceforge.net/
 SCST Source page: http://sourceforge.net/p/scst/svn/HEAD/tree/
 
+NOTE: There are 3 repositories of Qlogic drivers that support Target Mode:
+
+      1) Qlogic maintained repository (This one. git://git.qlogic.com/scst-qla2xxx.git).
+	This repository will have the latest fix going forward in
+	supporting SCST Target Mode.  This version will have patches
+	that are part of the upstream kernel (https://www.kernel.org/)
+	fix submission.
+
+      2) SCST Community repository (http://sourceforge.net/p/scst/svn/HEAD/tree/).
+	SCST Community repository carries an older version of Qlogic driver.
+	It does not have latest hardware support.  It is not maintain by Qlogic.
+	The maintainer of SCST (Vlad) had agreed to obsolete this version in favor
+	of option 1.
+
+      3) Upstreams Kernel repository (https://www.kernel.org/). 
+	Upstreams Kernel also carry a copy of Qlogic Target mode driver.  That 
+	version is not compatible with SCST.  That version is part of the TCM
+	Target Mode infrastructure.  It is not recommended to mix that source
+	with this version you've just downloaded.
 
 2. OS Support
 
@@ -106,6 +126,18 @@ configure SCST for the latest QLogic Linux driver offering for target mode:
     # git svn fetch
     # git checkout -b mytrunk remotes/origin/trunk
 
+    [optional] pull latest fixes from remote "trunk" if "mytrunk" is behind
+    # git svn rebase
+
+CAVEAT: It is assume reader of this material is familiar with git command.
+      "git svn" feature is not normally available as part of OS installation.
+      You may need to download latest git source and rebuild.  Additional
+      RPM's from your OS DVD or external source are required.  The following
+      RPMs are required to support "SVN" source control access.
+
+      subversion-<version>.rpm
+      subversion-perl-<version>.rpm
+
 
 5. Building, installing, configuring and loading SCST & Qlogic driver
 This section provides procedures for building the driver on various 
@@ -136,13 +168,15 @@ This section describes how to build and install driver modules
        # ls /usr/local/include/scst/
     
     4. Build and install Qlogic drivers.
-       NOTE: The steps above must succeed before building QLogic drivers
+       NOTE: The steps above must succeed before building QLogic drivers.
+	Qlogic driver has dependency on SCST's Include files in 
+	/usr/local/include/scst/
 
        # cd /root/scst-qla2xxx
        # make all
     
     3. Verify that compilation and installation succeeded:
-       # ls -l /lib/modules/`uname -r`/extra/qla2*
+       # ls -l /lib/modules/`uname -r`/extra/qla2xxx_scst*
 
     The kernel modules have been installed in
         '/lib/modules/`your_kernel_version`/extra'.
