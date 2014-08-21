@@ -2323,6 +2323,13 @@ static void q24_send_notify_ack(scsi_qla_host_t *vha,
 		nack->flags = iocb->flags &
 			__constant_cpu_to_le32(NOTIFY24XX_FLAGS_PUREX_IOCB);
 	}
+	if (le16_to_cpu(iocb->status_subcode) == ELS_PRLI ) {
+		if (le16_to_cpu(iocb->vp_index) ==  0 &&
+			vha->hw->flags.ql2x_prli_ctl) {
+			nack->flags |= __constant_cpu_to_le16(BIT_8);
+			nack->reserved_6 = cpu_to_le32(vha->hw->prli_serv_params_w3);
+		}
+	}
 	nack->srr_rx_id = iocb->srr_rx_id;
 	nack->status = iocb->status;
 	nack->status_subcode = iocb->status_subcode;

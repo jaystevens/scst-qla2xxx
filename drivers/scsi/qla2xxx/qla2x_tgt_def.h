@@ -665,7 +665,9 @@ typedef struct {
 	uint8_t  srr_reject_vendor_uniq;
 	uint8_t  srr_reject_code_expl;
 	uint8_t  srr_reject_code;
-	uint8_t  reserved_5[7];
+	uint8_t  reserved_5[1];
+	uint32_t reserved_6;
+	uint8_t  reserved_7[2];
 	uint16_t ox_id;
 } __attribute__((packed)) nack24xx_entry_t;
 

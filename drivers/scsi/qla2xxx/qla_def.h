@@ -401,7 +401,9 @@ struct srb_iocb {
 #define SRB_LOGIN_RETRIED	BIT_0
 #define SRB_LOGIN_COND_PLOGI	BIT_1
 #define SRB_LOGIN_SKIP_PRLI	BIT_2
+#define SRB_PRLI_IT_CTL		BIT_3
 			uint16_t data[2];
+			uint32_t prli_serv_params_w3;
 		} logio;
 		struct {
 			/*
@@ -3137,6 +3139,7 @@ struct qla_hw_data {
 
 		/* 33 bits */
 		uint32_t        fawwpn_enabled:1;
+		uint32_t	ql2x_prli_ctl	:1;
 
 	} flags;
 
@@ -3628,6 +3631,8 @@ struct qla_hw_data {
 	uint32_t        md_dump_size;
 
 	void		*loop_id_map;
+
+	uint32_t	prli_serv_params_w3;
 
 	/* QLA83XX IDC specific fields */
 	uint32_t	idc_audit_ts;

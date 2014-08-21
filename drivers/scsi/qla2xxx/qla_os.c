@@ -52,6 +52,8 @@ MODULE_PARM_DESC(qlini_mode,
 	"\"enabled\" - initiator mode will always stay enabled.");
 
 static int ql2x_ini_mode = QLA2X_INI_MODE_EXCLUSIVE;
+
+
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 static int apidev_major;
 
@@ -273,6 +275,12 @@ module_param(ql2xexlogins, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(ql2xexlogins,
 		"Number of extended Logins."
 		"0(Default) - Disabled.");
+
+int ql2x_prli_it_ctl = 0;
+module_param(ql2x_prli_it_ctl, uint, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(ql2x_prli_it_ctl,
+		"PRLI serv param, initiator(5)/target(4) bit control "
+		"0(Default)- normal; 0x20-Initiator; 0x10-Target; 0x30-both");
 #endif
 
 QLA_QRATE_DECLARE_MOD_PARAM;

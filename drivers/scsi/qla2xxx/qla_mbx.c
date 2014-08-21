@@ -2035,6 +2035,13 @@ qla24xx_login_fabric(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
 		lg->control_flags |= __constant_cpu_to_le16(LCF_COND_PLOGI);
 	if (opt & BIT_1)
 		lg->control_flags |= __constant_cpu_to_le16(LCF_SKIP_PRLI);
+
+
+	if (ha->flags.ql2x_prli_ctl && (vha->vp_idx == 0)) {
+		lg->control_flags |= BIT_10;
+		lg->io_parameter[0] = cpu_to_le32(ha->prli_serv_params_w3);
+	}
+
 	lg->port_id[0] = al_pa;
 	lg->port_id[1] = area;
 	lg->port_id[2] = domain;

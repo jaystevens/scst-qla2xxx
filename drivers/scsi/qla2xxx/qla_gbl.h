@@ -129,6 +129,7 @@ extern int num_hosts;
 extern uint ql2x_tgt_exchg_cnt_percent;
 #endif
 extern int ql2xexlogins;
+extern int ql2x_prli_it_ctl;
 
 extern int qla2x00_loop_reset(scsi_qla_host_t *);
 extern void qla2x00_abort_all_cmds(scsi_qla_host_t *, int);

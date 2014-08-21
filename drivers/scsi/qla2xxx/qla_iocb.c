@@ -1948,6 +1948,12 @@ qla24xx_login_iocb(srb_t *sp, struct logio_entry_24xx *logio)
 		logio->control_flags |= cpu_to_le16(LCF_COND_PLOGI);
 	if (lio->u.logio.flags & SRB_LOGIN_SKIP_PRLI)
 		logio->control_flags |= cpu_to_le16(LCF_SKIP_PRLI);
+	if (lio->u.logio.flags & SRB_PRLI_IT_CTL) {
+		logio->control_flags |= BIT_10;
+		logio->io_parameter[0] =
+			cpu_to_le32(lio->u.logio.prli_serv_params_w3);
+	}
+
 	logio->nport_handle = cpu_to_le16(sp->fcport->loop_id);
 	logio->port_id[0] = sp->fcport->d_id.b.al_pa;
 	logio->port_id[1] = sp->fcport->d_id.b.area;

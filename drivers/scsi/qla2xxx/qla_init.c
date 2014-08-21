@@ -158,6 +158,12 @@ qla2x00_async_login(struct scsi_qla_host *vha, fc_port_t *fcport,
 	lio->timeout = qla2x00_async_iocb_timeout;
 	sp->done = qla2x00_async_login_sp_done;
 	lio->u.logio.flags |= SRB_LOGIN_COND_PLOGI;
+
+	if (vha->hw->flags.ql2x_prli_ctl && (vha->vp_idx == 0)) {
+		lio->u.logio.flags |= SRB_PRLI_IT_CTL;
+		lio->u.logio.prli_serv_params_w3 =
+			vha->hw->prli_serv_params_w3;
+	}
 	if (data[1] & QLA_LOGIO_LOGIN_RETRIED)
 		lio->u.logio.flags |= SRB_LOGIN_RETRIED;
 	rval = qla2x00_start_sp(sp);
@@ -5428,6 +5434,11 @@ qla24xx_nvram_config(scsi_qla_host_t *vha)
 	ha->flags.enable_led_scheme = 0;
 	ha->flags.disable_serdes = le32_to_cpu(nv->host_p) & BIT_5 ? 1: 0;
 
+	if (ql2x_prli_it_ctl & (BIT_4|BIT_5)) {
+		ha->flags.ql2x_prli_ctl = 1;
+		ha->prli_serv_params_w3 = (ql2x_prli_it_ctl & (BIT_4|BIT_5));
+	}
+
 	ha->operating_mode = (le32_to_cpu(icb->firmware_options_2) &
 	    (BIT_6 | BIT_5 | BIT_4)) >> 4;
 
@@ -6592,6 +6603,11 @@ qla81xx_nvram_config(scsi_qla_host_t *vha)
 	    le32_to_cpu(nv->host_p) & BIT_11 ? 1: 0;
 	ha->flags.enable_led_scheme = 0;
 	ha->flags.disable_serdes = le32_to_cpu(nv->host_p) & BIT_5 ? 1: 0;
+
+	if (ql2x_prli_it_ctl & (BIT_4|BIT_5) ) {
+		ha->flags.ql2x_prli_ctl = 1;
+		ha->prli_serv_params_w3 = (ql2x_prli_it_ctl & (BIT_4|BIT_5));
+	}
 
 	ha->operating_mode = (le32_to_cpu(icb->firmware_options_2) &
 	    (BIT_6 | BIT_5 | BIT_4)) >> 4;
