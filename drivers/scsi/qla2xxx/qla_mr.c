@@ -3351,8 +3351,7 @@ qlafx00_tm_iocb(srb_t *sp, struct tsk_mgmt_entry_fx00 *ptm_iocb)
 		    sizeof(struct scsi_lun));
 	}
 
-	memcpy((void __iomem *)ptm_iocb, &tm_iocb,
-	    sizeof(struct tsk_mgmt_entry_fx00));
+	memcpy(ptm_iocb, &tm_iocb, sizeof(struct tsk_mgmt_entry_fx00));
 	wmb();
 }
 
