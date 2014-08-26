@@ -2465,7 +2465,7 @@ static int q2t_check_reserve_free_req(scsi_qla_host_t *vha, uint32_t req_cnt)
 {
 	int res = SCST_TGT_RES_SUCCESS;
 	struct qla_hw_data *ha = vha->hw;
-	device_reg_t __iomem *reg = ha->iobase;
+	device_reg_t *reg = ha->iobase;
 	uint32_t cnt;
 
 	TRACE_ENTRY();

@@ -3212,9 +3212,9 @@ probe_hw_failed:
 iospace_config_failed:
 	if (IS_P3P_TYPE(ha)) {
 		if (!ha->nx_pcibase)
-			iounmap((device_reg_t __iomem *)ha->nx_pcibase);
+			iounmap((device_reg_t *)ha->nx_pcibase);
 		if (!ql2xdbwr)
-			iounmap((device_reg_t __iomem *)ha->nxdb_wr_ptr);
+			iounmap((device_reg_t *)ha->nxdb_wr_ptr);
 	} else {
 		if (ha->iobase)
 			iounmap(ha->iobase);
@@ -3343,9 +3343,9 @@ static void
 qla2x00_unmap_iobases(struct qla_hw_data *ha)
 {
 	if (IS_QLA82XX(ha)) {
-		iounmap((device_reg_t __iomem *)ha->nx_pcibase);
+		iounmap((device_reg_t *)ha->nx_pcibase);
 		if (!ql2xdbwr)
-			iounmap((device_reg_t __iomem *)ha->nxdb_wr_ptr);
+			iounmap((device_reg_t *)ha->nxdb_wr_ptr);
 	} else {
 		if (ha->iobase)
 			iounmap(ha->iobase);

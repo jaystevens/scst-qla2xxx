@@ -3142,7 +3142,7 @@ struct qla_hw_data {
 	spinlock_t	hardware_lock ____cacheline_aligned;
 	int		bars;
 	int		mem_only;
-	device_reg_t __iomem *iobase;           /* Base I/O address */
+	device_reg_t   *iobase;           /* Base I/O address */
 	resource_size_t pio_address;
 
 #define MIN_IOBASE_LEN          0x100
@@ -3161,8 +3161,8 @@ struct qla_hw_data {
 	uint32_t		rsp_que_off;
 
 	/* Multi queue data structs */
-	device_reg_t __iomem *mqiobase;
-	device_reg_t __iomem *msixbase;
+	device_reg_t   *mqiobase;
+	device_reg_t   *msixbase;
 	uint16_t        msix_count;
 	uint8_t         mqenable;
 	struct req_que **req_q_map;

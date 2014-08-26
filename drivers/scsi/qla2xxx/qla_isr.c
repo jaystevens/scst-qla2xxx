@@ -3620,7 +3620,7 @@ int
 qla2x00_request_irqs(struct qla_hw_data *ha, struct rsp_que *rsp)
 {
 	int ret = QLA_FUNCTION_FAILED;
-	device_reg_t __iomem *reg = ha->iobase;
+	device_reg_t *reg = ha->iobase;
 	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
 
 	/* If possible, enable MSI-X. */
