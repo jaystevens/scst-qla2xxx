@@ -422,7 +422,7 @@ static void qla2x00_free_req_que(struct qla_hw_data *ha, struct req_que *req)
 		    (req->length + 1) * sizeof(request_t),
 		    req->ring, req->dma);
 
-	if (req && req->outstanding_cmds)
+	if (req)
 		kfree(req->outstanding_cmds);
 
 	kfree(req);
