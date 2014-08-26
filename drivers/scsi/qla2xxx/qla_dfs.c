@@ -161,9 +161,9 @@ qla_dfs_q_rate_hist_write(struct file *file, const char __user *buf,
 {
 	struct scsi_qla_host *vha =
 	    ((struct seq_file *)file->private_data)->private;
-	memset(&vha->qrate.io_rate, sizeof(struct qla_qrate_stat), 0);
-	memset(&vha->qrate.req_rate, sizeof(struct qla_qrate_stat), 0);
-	memset(&vha->qrate.rsp_rate, sizeof(struct qla_qrate_stat), 0);
+	memset(&vha->qrate.io_rate, 0, sizeof(struct qla_qrate_stat));
+	memset(&vha->qrate.req_rate, 0, sizeof(struct qla_qrate_stat));
+	memset(&vha->qrate.rsp_rate, 0, sizeof(struct qla_qrate_stat));
 	vha->qrate.collect_hist = 0;
 	return size;
 }
