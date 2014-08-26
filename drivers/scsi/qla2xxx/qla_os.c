@@ -950,7 +950,7 @@ EXPORT_SYMBOL(qla2x00_wait_for_hba_online);
  *	(if any) before calling this routine.
  *
  */
-void
+static void
 qla2x00_wait_for_hba_ready(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;

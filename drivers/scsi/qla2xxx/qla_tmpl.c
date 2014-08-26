@@ -709,7 +709,7 @@ struct qla27xx_fwdt_entry_call {
 	    ulong *);
 };
 
-struct qla27xx_fwdt_entry_call ql27xx_fwdt_entry_call_list[] = {
+static struct qla27xx_fwdt_entry_call ql27xx_fwdt_entry_call_list[] = {
 	{ ENTRY_TYPE_NOP		, qla27xx_fwdt_entry_t0    } ,
 	{ ENTRY_TYPE_TMP_END		, qla27xx_fwdt_entry_t255  } ,
 	{ ENTRY_TYPE_RD_IOB_T1		, qla27xx_fwdt_entry_t256  } ,

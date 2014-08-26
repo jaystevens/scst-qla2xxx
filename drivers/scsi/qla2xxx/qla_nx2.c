@@ -189,7 +189,7 @@ qla8044_poll_wait_ipmdio_bus_idle(struct scsi_qla_host *vha,
 	return 0;
 }
 
-int
+static int
 qla8044_ipmdio_wr_reg(struct scsi_qla_host *vha, uint32_t addr1,
 	uint32_t addr3, uint32_t mask, uint32_t addr, uint32_t value)
 {
@@ -562,7 +562,7 @@ qla8044_read_optrom_data(struct scsi_qla_host *vha, uint8_t *buf,
 	return buf;
 }
 
-inline int
+static inline int
 qla8044_need_reset(struct scsi_qla_host *vha)
 {
 	uint32_t drv_state, drv_active;
@@ -1605,7 +1605,7 @@ qla8044_set_idc_dontreset(struct scsi_qla_host *vha)
 	qla8044_wr_reg(ha, QLA8044_IDC_DRV_CTRL, idc_ctrl);
 }
 
-inline void
+static inline void
 qla8044_set_rst_ready(struct scsi_qla_host *vha)
 {
 	uint32_t drv_state;

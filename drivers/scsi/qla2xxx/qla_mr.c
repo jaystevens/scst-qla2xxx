@@ -355,7 +355,7 @@ iospace_error_exit:
 	return -ENOMEM;
 }
 
-void
+static void
 qlafx00_save_queue_ptrs(struct scsi_qla_host *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
@@ -880,7 +880,7 @@ qlafx00_configure_devices(scsi_qla_host_t *vha)
 	return rval;
 }
 
-void
+static void
 qlafx00_abort_isp_cleanup(scsi_qla_host_t *vha, bool critemp)
 {
 	struct qla_hw_data *ha = vha->hw;
@@ -1345,7 +1345,7 @@ qla2x00_fxdisc_sp_done(void *data, void *ptr, int res)
 #define _X      0x40    /* hex digit */
 #define _SP     0x80    /* hard space (0x20) */
 
-const unsigned char _ctype[] = {
+static const unsigned char _ctype[] = {
 _C, _C, _C, _C, _C, _C, _C, _C,                         /* 0-7 */
 _C, _C|_S, _C|_S, _C|_S, _C|_S, _C|_S, _C, _C,          /* 8-15 */
 _C, _C, _C, _C, _C, _C, _C, _C,                         /* 16-23 */
@@ -2731,7 +2731,7 @@ qlafx00_status_cont_entry(struct rsp_que *rsp)
  * qlafx00_multistatus_entry() - Process Multi response queue entries.
  * @ha: SCSI driver HA context
  */
-void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
+static void qlafx00_multistatus_entry(struct scsi_qla_host *vha,
 	struct rsp_que *rsp)
 {
 	srb_t		*sp;
@@ -2827,7 +2827,7 @@ qlafx00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp,
  * qlafx00_process_response_queue() - Process response queue entries.
  * @ha: SCSI driver HA context
  */
-void qlafx00_process_response_queue(struct scsi_qla_host *vha,
+static void qlafx00_process_response_queue(struct scsi_qla_host *vha,
 	struct rsp_que *rsp)
 {
 	struct sts_entry_fx00 *pkt;
@@ -2901,7 +2901,7 @@ void qlafx00_process_response_queue(struct scsi_qla_host *vha,
  * qlafx00_async_event() - Process aynchronous events.
  * @ha: SCSI driver HA context
  */
-void
+static void
 qlafx00_async_event(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
