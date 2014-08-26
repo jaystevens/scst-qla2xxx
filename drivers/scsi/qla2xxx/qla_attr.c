@@ -41,7 +41,6 @@ qla2x00_store_class2_enabled(struct device *dev,
 	struct qla_hw_data *ha = vha->hw;
 	int reset = 0;
 	unsigned long flags;
-	int res = size;
 
 	if (buffer == NULL)
 		goto out;
@@ -65,7 +64,6 @@ qla2x00_store_class2_enabled(struct device *dev,
 			} else {
 				printk(KERN_INFO "Firmware doesn't "
 					"support class 2 operations.\n");
-				res = -EINVAL;
 				goto out_unlock;
 			}
 		}
@@ -73,7 +71,6 @@ qla2x00_store_class2_enabled(struct device *dev,
 	default:
 		printk(KERN_ERR "%s(%ld): Requested action not understood: "
 			"%s\n", __func__, vha->host_no, buffer);
-		res = -EINVAL;
 		goto out_unlock;
 	}
 
@@ -1740,7 +1737,6 @@ qla2x00_sysfs_read_dcbx_tlv(struct file *filp,
 	    struct device, kobj)));
 	struct qla_hw_data *ha = vha->hw;
 	int rval;
-	uint16_t actual_size;
 
 	if (!capable(CAP_SYS_ADMIN) || off != 0 || count > DCBX_TLV_DATA_SIZE)
 		return 0;
@@ -1757,7 +1753,6 @@ qla2x00_sysfs_read_dcbx_tlv(struct file *filp,
 	}
 
 do_read:
-	actual_size = 0;
 	memset(ha->dcbx_tlv, 0, DCBX_TLV_DATA_SIZE);
 
 	rval = qla2x00_get_dcbx_params(vha, ha->dcbx_tlv_dma,

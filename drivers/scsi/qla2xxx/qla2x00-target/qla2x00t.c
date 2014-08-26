@@ -3558,7 +3558,6 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 {
 	ctio7_status1_entry_t *ctio;
 	unsigned long flags = 0; /* to stop compiler's warning */
-	int do_tgt_cmd_done = 0;
 	struct	qla_hw_data	*ha = vha->hw;
 
 	TRACE_ENTRY();
@@ -3587,8 +3586,7 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 			PRINT_ERROR("qla2x00t(%ld): Terminating cmd %p with "
 				"incorrect state %d", vha->host_no, cmd,
 				 cmd->state);
-		} else
-			do_tgt_cmd_done = 1;
+		}
 	} else
 		ctio->common.nport_handle = CTIO7_NHANDLE_UNRECOGNIZED;
 	ctio->common.handle = Q2T_SKIP_HANDLE |	CTIO_COMPLETION_HANDLE_MARK;
@@ -4846,7 +4844,7 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 	struct q2t_sess *sess;
 	uint8_t s_id[3];
 	notify83xx_entry_t *inot = (notify83xx_entry_t *)iocb;
-	uint16_t wd3_lo, flags;
+	uint16_t wd3_lo;
 	uint64_t wwn;
 
 	TRACE_ENTRY();
@@ -4858,7 +4856,6 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 	switch (iocb->status_subcode) {
 
 	case ELS_PLOGI: {
-		flags = le16_to_cpu(inot->flags);
 		wwn = wwn_to_u64(inot->port_name);
 
 		TRACE_MGMT_DBG("ELS PLOGI rcv 0x%llx portid=%02x%02x%02x "
@@ -6534,8 +6531,10 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 	uint8_t *s_id = NULL; /* to hide compiler warnings */
 	uint8_t local_s_id[3];
 	int loop_id = -1; /* to hide compiler warnings */
+#if 0
 	int login_state;
 	bool logout_acc_pending;
+#endif
 	uint64_t wwn=0;
 
 	TRACE_ENTRY();
@@ -6694,8 +6693,10 @@ after_find:
 			 * depending on its current login state.
 			 */
 			loop_id = sess->loop_id;
+#if 0
 			login_state = sess->login_state;
 			logout_acc_pending = sess->logout_acc_pending;
+#endif
 			spin_unlock_irq(&ha->hardware_lock);
 			mutex_unlock(&vha->vha_tgt.tgt_mutex);
 			/*
@@ -7528,7 +7529,6 @@ out:
 
 void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 {
-	int rc =EIO;
 	struct q2t_cmd *cmd;
 	struct scst_cmd *scst_cmd;
 	ctio7_fw_entry_t *entry;
@@ -7626,7 +7626,6 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 		}
 	} else {
 		/* no error from ctio */
-		rc = 0;
 		spin_lock_irqsave(&rthr->rx_pendq_lock, flags);
 		//memcpy((void*)&cmd->rsp_pkt,(void*) pkt, sizeof(response_t));
 		list_add_tail(&cmd->list_entry, &rthr->rx_pend_queue);
