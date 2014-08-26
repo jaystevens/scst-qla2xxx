@@ -83,11 +83,13 @@ endif
 
 INSTALL_DIR := $(INSTALL_MOD_PATH)/lib/modules/$(KVER)/extra
 
-SCST_INC_DIR := $(shell if [ -e "$$PWD/../../scst" ];			\
-                  then echo "$$PWD/../../scst/include";			\
-                  else echo "$(DESTDIR)$(PREFIX)/include/scst"; fi)
-SCST_DIR := $(shell if [ -e "$$PWD/../../scst" ];			\
-		    then echo "$$PWD/../../scst/src";			\
+SCST_INC_DIR := $(shell s="$$(dirname "$$(dirname "$$PWD")")";		\
+		  if [ -e "$$s/scst" ];					\
+		  then echo "$$s/scst/include";				\
+		  else echo "$(DESTDIR)$(PREFIX)/include/scst"; fi)
+SCST_DIR := $(shell s="$$(dirname "$$(dirname "$$PWD")")";		\
+		    if [ -e "$$s/scst" ];				\
+		    then echo "$$s/scst/src";				\
 		    else echo "$(DESTDIR)$(PREFIX)/include/scst"; fi)
 
 ifneq ($(BUILD_2X_MODULE),)
