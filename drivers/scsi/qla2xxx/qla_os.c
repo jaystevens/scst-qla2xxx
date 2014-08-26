@@ -3157,7 +3157,7 @@ skip_dpc:
 
 	ql_log(ql_log_info, base_vha, 0x00fb,
 	    "QLogic %s - %s.\n",
-	    ha->model_number, ha->model_desc ? ha->model_desc : "");
+	    ha->model_number, ha->model_desc);
 
 	ql_log(ql_log_info, base_vha, 0x00fc,
 	    "ISP%04X: %s @ %s hdma%c host#=%ld fw=%s.\n",
