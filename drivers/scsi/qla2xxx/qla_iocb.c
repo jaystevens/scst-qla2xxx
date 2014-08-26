@@ -590,6 +590,8 @@ qla2x00_marker(struct scsi_qla_host *vha, struct req_que *req,
  */
 request_t *
 qla2x00_req_pkt(scsi_qla_host_t *vha)
+	__releases(&vha->hw->hardware_lock)
+	__acquires(&vha->hw->hardware_lock)
 {
 	struct qla_hw_data *ha = vha->hw;
 	device_reg_t *reg = ha->iobase;
