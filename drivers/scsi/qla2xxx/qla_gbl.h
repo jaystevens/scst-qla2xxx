@@ -121,6 +121,7 @@ extern int ql2xenabledif;
 extern int ql2xenablehba_err_chk;
 extern int ql2xtargetreset;
 extern int ql2xgffidenable;
+extern int ql2xasynclogin;
 extern int ql2xmdcapmask;
 extern int ql2xmdenable;
 extern int num_hosts;

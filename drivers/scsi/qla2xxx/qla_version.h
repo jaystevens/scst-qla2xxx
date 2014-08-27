@@ -7,7 +7,9 @@
 /*
  * Driver version
  */
-#define QLA2XXX_VERSION      "8.07.00.11.Trunk-SCST.13-k"
+
+#define QLA2XXX_VERSION      "8.07.00.13.Trunk-SCST.13-k"
+
 
 #define QLA_DRIVER_MAJOR_VER	8
 #define QLA_DRIVER_MINOR_VER	7

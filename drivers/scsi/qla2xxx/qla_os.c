@@ -229,6 +229,12 @@ MODULE_PARM_DESC(ql2xgffidenable,
 		"Enables GFF_ID checks of port type. "
 		"Default is 0 - Do not use GFF_ID information.");
 
+int ql2xasynclogin = 1;
+module_param(ql2xasynclogin, int, S_IRUGO);
+MODULE_PARM_DESC(ql2xasynclogin,
+		"Enables asynchronous login to remote ports "
+		"Default is 1 - Use asynchronous login if possible.");
+
 int ql2xasynctmfenable;
 module_param(ql2xasynctmfenable, int, S_IRUGO);
 MODULE_PARM_DESC(ql2xasynctmfenable,
@@ -247,6 +253,12 @@ MODULE_PARM_DESC(ql2xmdenable,
 		"Enable/disable MiniDump. "
 		"0 - MiniDump disabled. "
 		"1 (Default) - MiniDump enabled.");
+
+ushort ql2xsg_tablesize = QLA_SG_ALL;
+module_param(ql2xsg_tablesize, ushort, S_IRUGO);
+MODULE_PARM_DESC(ql2xsg_tablesize,
+		"Number of entries in scatter/gather table.");
+
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 uint ql2x_tgt_exchg_cnt_percent = 50;
@@ -2900,7 +2912,7 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 			host->sg_tablesize = 32;
 	} else {
 		if (!IS_QLA82XX(ha))
-			host->sg_tablesize = QLA_SG_ALL;
+			host->sg_tablesize = ql2xsg_tablesize;
 	}
 	host->max_id = ha->max_fibre_devices;
 	host->cmd_per_lun = 3;
@@ -4504,7 +4516,7 @@ void qla2x00_relogin(struct scsi_qla_host *vha)
 					}
 				}
 
-				if (IS_ALOGIO_CAPABLE(ha)) {
+				if (ql2xasynclogin && IS_ALOGIO_CAPABLE(ha)) {
 					fcport->flags |= FCF_ASYNC_SENT;
 					data[0] = 0;
 					data[1] = QLA_LOGIO_LOGIN_RETRIED;

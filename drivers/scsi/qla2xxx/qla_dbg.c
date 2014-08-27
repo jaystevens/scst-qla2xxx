@@ -15,10 +15,11 @@
  * |                              |                    | 0x0144,0x0146	|
  * |                              |                    | 0x015b-0x0160	|
  * |                              |                    | 0x016e-0x0170	|
- * | Mailbox commands             |       0x118b       | 0x1115-0x1116  |
- * |                              |                    | 0x111a         |
- * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
- * |                              |                    | 0x2016         |
+ * | Mailbox commands             |       0x118b       | 0x1019		|
+ * |                              |                    | 0x1115-0x1116	|
+ * |                              |                    | 0x111a-0x111b	|
+ * | Device Discovery             |       0x2016       | 0x2020-0x2022  |
+ * |                              |                    | 0x2099-0x20a4  |
  * | Queue Command and IO tracing |       0x3052       | 0x3006-0x300b  |
  * |				  |		       | 0x3027-0x3028  |
  * |                              |                    | 0x304b-0x304c  |
@@ -27,9 +28,9 @@
  * |                              |                    | 0x401e-0x401f  |
  * | Async Events                 |       0x5087       | 0x502b-0x502f  |
  * |                              |                    | 0x503d,0x5044  |
- * |				  |		       | 0x5047         |
- * |				  |		       | 0x5074,0x5075  |
- * |				  |		       | 0x507b,0x507a  |
+ * |				  | 		       | 0x5047,0x505f  |
+ * |				  | 		       | 0x5074,0x5075  |
+ * |				  | 		       | 0x507b,0x507a  |
  * | Timer Routines               |       0x6012       |                |
  * | User Space Interactions      |       0x70e1       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |

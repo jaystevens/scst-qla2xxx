@@ -2313,12 +2313,6 @@ qla2x00_init_rings(scsi_qla_host_t *vha)
 		mid_init_cb->init_cb.execution_throttle =
 		    cpu_to_le16(ha->fw_xcb_count);
 	}
-	if (IS_DPORT_CAPABLE(ha))
-		mid_init_cb->init_cb.firmware_options_1 |=
-		    __constant_cpu_to_le16(BIT_7);
-	if (IS_FAWWN_CAPABLE(ha))
-		mid_init_cb->init_cb.firmware_options_1 |=
-		    __constant_cpu_to_le16(BIT_6);
 
 	rval = qla2x00_init_firmware(vha, ha->init_cb_size);
 next_check:
@@ -4091,7 +4085,7 @@ qla2x00_fabric_dev_login(scsi_qla_host_t *vha, fc_port_t *fcport,
 	ql_dbg(ql_dbg_disc, vha, 0x2100,
 		"%s: Entered %llx",__func__,wwn_to_u64(fcport->port_name));
 
-	if (IS_ALOGIO_CAPABLE(ha)) {
+	if (ql2xasynclogin && IS_ALOGIO_CAPABLE(ha)) {
 		if (fcport->flags & FCF_ASYNC_SENT)
 			return rval;
 		fcport->flags |= FCF_ASYNC_SENT;

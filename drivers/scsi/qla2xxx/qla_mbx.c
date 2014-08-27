@@ -372,7 +372,8 @@ premature_exit:
 	complete(&ha->mbx_cmd_comp);
 
 mbx_done:
-	if (rval != QLA_SUCCESS) {
+
+	if (rval) {
 		ql_dbg(ql_dbg_disc + ql_dbg_verbose, base_vha, 0x1020,
 		    "**** Failed mbx[0]=%x, mb[1]=%x, mb[2]=%x, mb[3]=%x, cmd=%x ****.\n",
 		    mcp->mb[0], mcp->mb[1], mcp->mb[2], mcp->mb[3], command);
@@ -1192,7 +1193,7 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 	mcp->in_mb = MBX_9|MBX_7|MBX_6|MBX_3|MBX_2|MBX_1|MBX_0;
 	if (IS_CNA_CAPABLE(vha->hw))
 		mcp->in_mb |= MBX_13|MBX_12|MBX_11|MBX_10;
-	if (IS_FAWWN_CAPABLE(vha->hw))
+	if (IS_FWI2_CAPABLE(vha->hw))
 		mcp->in_mb |= MBX_19|MBX_18|MBX_17|MBX_16;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
@@ -1227,22 +1228,21 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 			vha->fcoe_vn_port_mac[1] = mcp->mb[13] >> 8;
 			vha->fcoe_vn_port_mac[0] = mcp->mb[13] & 0xff;
 		}
-		if (IS_FAWWN_CAPABLE(vha->hw)) {
-			if (mcp->mb[7] & BIT_14) {
-				vha->port_name[0] = MSB(mcp->mb[16]);
-				vha->port_name[1] = LSB(mcp->mb[16]);
-				vha->port_name[2] = MSB(mcp->mb[17]);
-				vha->port_name[3] = LSB(mcp->mb[17]);
-				vha->port_name[4] = MSB(mcp->mb[18]);
-				vha->port_name[5] = LSB(mcp->mb[18]);
-				vha->port_name[6] = MSB(mcp->mb[19]);
-				vha->port_name[7] = LSB(mcp->mb[19]);
-				fc_host_port_name(vha->host) =
-				    wwn_to_u64(vha->port_name);
-				ql_dbg(ql_dbg_mbx, vha, 0x10ca,
-				    "FA-WWN acquired %016llx\n",
-				    wwn_to_u64(vha->port_name));
-			}
+		/* If FA-WWN supported */
+		if (mcp->mb[7] & BIT_14) {
+			vha->port_name[0] = MSB(mcp->mb[16]);
+			vha->port_name[1] = LSB(mcp->mb[16]);
+			vha->port_name[2] = MSB(mcp->mb[17]);
+			vha->port_name[3] = LSB(mcp->mb[17]);
+			vha->port_name[4] = MSB(mcp->mb[18]);
+			vha->port_name[5] = LSB(mcp->mb[18]);
+			vha->port_name[6] = MSB(mcp->mb[19]);
+			vha->port_name[7] = LSB(mcp->mb[19]);
+			fc_host_port_name(vha->host) =
+			    wwn_to_u64(vha->port_name);
+			ql_dbg(ql_dbg_mbx, vha, 0x10ca,
+			    "FA-WWN acquired %016llx\n",
+			    wwn_to_u64(vha->port_name));
 		}
 	}
 
@@ -1722,11 +1722,9 @@ qla2x00_get_firmware_state(scsi_qla_host_t *vha, uint16_t *states)
 	mcp->mb[0] = MBC_GET_FIRMWARE_STATE;
 	mcp->out_mb = MBX_0;
 	if (IS_FWI2_CAPABLE(vha->hw))
-		mcp->in_mb = MBX_5|MBX_4|MBX_3|MBX_2|MBX_1|MBX_0;
+		mcp->in_mb = MBX_6|MBX_5|MBX_4|MBX_3|MBX_2|MBX_1|MBX_0;
 	else
 		mcp->in_mb = MBX_1|MBX_0;
-	if (IS_DPORT_CAPABLE(vha->hw))
-		mcp->in_mb |= MBX_6;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
@@ -1738,9 +1736,8 @@ qla2x00_get_firmware_state(scsi_qla_host_t *vha, uint16_t *states)
 		states[2] = mcp->mb[3];
 		states[3] = mcp->mb[4];
 		states[4] = mcp->mb[5];
+		states[5] = mcp->mb[6];  /* DPORT status */
 	}
-	if (IS_DPORT_CAPABLE(vha->hw))
-		states[5] = mcp->mb[6];
 
 	if (rval != QLA_SUCCESS) {
 		/*EMPTY*/
@@ -3694,28 +3691,19 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 		    rptid_entry->port_id[0]);
 
 		/* FA-WWN is only for physical port */
-		if (IS_FAWWN_CAPABLE(vha->hw) && vp_idx == 0) {
-			switch (MSB(stat)) {
-			case 0:
+		if (!vp_idx) {
+			void *wwpn = ha->init_cb->port_name;
+			if (!MSB(stat)) {
 				if (rptid_entry->vp_idx_map[1] & BIT_6) {
-					memcpy(vha->port_name,
-					    rptid_entry->reserved_4 + 8,
-					    sizeof(vha->port_name));
-					fc_host_port_name(vha->host) =
-					    wwn_to_u64(vha->port_name);
-					ql_dbg(ql_dbg_mbx, vha, 0x1018,
-					    "FA-WWN acquired %llx\n",
-					    wwn_to_u64(vha->port_name));
-				} else {
-					ql_dbg(ql_dbg_mbx, vha, 0x1019,
-					    "FA-WWN not acquired\n");
+					wwpn = rptid_entry->reserved_4 + 8;
 				}
-				break;
-			default:
-				ql_dbg(ql_dbg_mbx, vha, 0x111b,
-				    "FA-WWN other status %x.\n", MSB(stat));
-				break;
 			}
+			memcpy(vha->port_name, wwpn, WWN_SIZE);
+			fc_host_port_name(vha->host) =
+			    wwn_to_u64(vha->port_name);
+			ql_dbg(ql_dbg_mbx, vha, 0x1018,
+			    "FA-WWN portname %016llx (%x)\n",
+			    fc_host_port_name(vha->host), MSB(stat));
 		}
 
 		vp = vha;
