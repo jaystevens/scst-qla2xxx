@@ -93,7 +93,12 @@ qla2x00_alloc_outstanding_cmds(struct qla_hw_data *, struct req_que *);
 void qla2x00_query_login(scsi_qla_host_t *vha, uint16_t *mb);
 void qla2x00_async_gpdb(struct scsi_qla_host *, fc_port_t *, uint16_t *);
 
-
+extern int qla24xx_walk_and_build_sglist_no_difb(struct qla_hw_data *, srb_t *,
+	uint32_t *, uint16_t,struct qla_tc_param *);
+extern int qla24xx_walk_and_build_sglist(struct qla_hw_data *, srb_t *,
+	uint32_t *, uint16_t,struct qla_tc_param *);
+extern int qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *, srb_t *,
+	uint32_t *, uint16_t, struct qla_tc_param *);
 /*
  * Global Data in qla_os.c source file.
  */

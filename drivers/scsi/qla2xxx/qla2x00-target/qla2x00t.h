@@ -39,6 +39,13 @@
 
 #define Q2T_MAX_HW_PENDING_TIME	    60 /* in seconds */
 
+
+/* per scst_debug.h: Flags 0xXXXXXXXXXX000000 are local for users */
+#define TRACE_T10DIF	0x01000000
+#ifdef CONFIG_SCST_DEBUG
+#else
+#endif
+
 /* Immediate notify status constants */
 #define IMM_NTFY_LIP_RESET          0x000E
 #define IMM_NTFY_LIP_LINK_REINIT    0x000F
@@ -261,6 +268,28 @@ struct qfull_arg {
 };
 
 
+#if defined SCST_DIF_NO_CHECK_APP_TAG && !defined TARGET_CORE_BASE_H
+/* these opcode is borrowed from upstream */
+typedef enum target_prot_op {
+	TARGET_PROT_NORMAL = 0, // check=off
+	TARGET_PROT_DIN_INSERT,
+	TARGET_PROT_DOUT_INSERT,
+	TARGET_PROT_DIN_STRIP,
+	TARGET_PROT_DOUT_STRIP,
+	TARGET_PROT_DIN_PASS,	// check = on
+	TARGET_PROT_DOUT_PASS,	// check = on
+	TARGET_PROT_PASS_NOCHECK, // Not part of upstream.
+} target_prot_op_t;
+
+enum target_prot_type {
+	TARGET_DIF_TYPE0_PROT,
+	TARGET_DIF_TYPE1_PROT,
+	TARGET_DIF_TYPE2_PROT,
+	TARGET_DIF_TYPE3_PROT,
+};
+#endif
+
+
 struct q2t_cmd {
 	struct q2t_sess *sess;
 	uint32_t state;
@@ -292,8 +321,9 @@ struct q2t_cmd {
 	enum dma_data_direction dma_data_direction;
 	uint32_t reset_count;
 
-	uint16_t loop_id;		    /* to save extra sess dereferences */
-	struct q2t_tgt *tgt;		    /* to save extra sess dereferences */
+	uint16_t ox_id;
+	uint16_t loop_id;	/* to save extra sess dereferences */
+	struct q2t_tgt *tgt;	/* to save extra sess dereferences */
 
 	union {
 		atio7_entry_t atio7;
@@ -301,11 +331,39 @@ struct q2t_cmd {
 	} __packed atio;
 	struct list_head cmd_list;
 
+
 #ifdef QLA_RSPQ_NOLOCK
 	struct list_head list_entry;	// rx_pendq_list
 	response_t	rsp_pkt;	// ctio for error processing
 	uint32_t	status;
 #endif
+
+
+#ifdef SCST_DIF_NO_CHECK_APP_TAG
+	/* T10-diff */
+	uint8_t ctx_dsd_alloced; /* do not covert this field to bit field */
+
+	/* override scsi status in case of ULP does not T10-dif */
+	uint8_t dif_err_code;
+#define DIF_ERR_GRD 1
+#define DIF_ERR_REF 2
+#define DIF_ERR_APP 3
+	uint8_t scsi_status;
+	uint8_t sense_key;
+	uint8_t asc;
+	uint8_t ascq;
+
+	target_prot_op_t prot_op;
+	int blk_sz;
+	int prot_sg_cnt;
+	int prot_type;
+	int num_blks;
+
+	struct scatterlist *prot_sg;
+	struct crc_context *ctx;
+#endif
+
+	/* --- */
 	struct scst_cmd scst_cmd;
 };
 
@@ -357,6 +415,9 @@ struct q2t_prm {
 	int sense_buffer_len;
 	int residual;
 	int add_status_pkt;
+	/* t0-dif */
+	uint16_t prot_seg_cnt; // #of page holding prot_sg. diff data > 1page.
+	uint16_t tot_dsds;
 };
 
 struct srr_imm {

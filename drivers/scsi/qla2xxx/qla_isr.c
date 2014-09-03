@@ -1735,6 +1735,7 @@ qla2x00_process_response_queue(struct rsp_que *rsp)
 			case NOTIFY_ACK_TYPE:
 			case ENABLE_LUN_TYPE:
 			case MODIFY_LUN_TYPE:
+			case CTIO_CRC2:
 				break;
 			default:
 				((response_t *)pkt)->signature = RESPONSE_PROCESSED;
@@ -1757,6 +1758,7 @@ qla2x00_process_response_queue(struct rsp_que *rsp)
 		case NOTIFY_ACK_TYPE:
 		case ENABLE_LUN_TYPE:
 		case MODIFY_LUN_TYPE:
+		case CTIO_CRC2:
 			if (qla_target.tgt_response_pkt)
 				qla_target.tgt_response_pkt(vha,
 					(response_t *)pkt);
@@ -2962,6 +2964,7 @@ qla83xx_msix_rsp_q(int irq, void *dev_id)
 			case ABTS_RESP_24XX:
 			case CTIO_TYPE7:
 			case NOTIFY_ACK_TYPE:
+			case CTIO_CRC2:
 				break;
 			default:
 				((response_t *)pkt)->signature =
@@ -2977,6 +2980,7 @@ qla83xx_msix_rsp_q(int irq, void *dev_id)
 		}
 
 		switch (pkt->entry_type) {
+		case CTIO_CRC2:
 		case MARKER_TYPE:
 		case CTIO_TYPE7:
 			/*
@@ -3023,6 +3027,7 @@ qla83xx_msix_rsp_q(int irq, void *dev_id)
 			break;
 
 		case CTIO_TYPE7:
+		case CTIO_CRC2:
 			if (qla_target.tgt_process_ctio)
 				qla_target.tgt_process_ctio(vha,
 						(response_t *)pkt);

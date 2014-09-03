@@ -336,6 +336,7 @@ typedef struct {
 #define CTIO_ABORTED			0x02
 #define CTIO_INVALID_RX_ID		0x08
 #define CTIO_TIMEOUT			0x0B
+#define CTIO_DIF_ERROR			0x0C	/* DIF error detected  */
 #define CTIO_LIP_RESET			0x0E
 #define CTIO_TARGET_RESET		0x17
 #define CTIO_PORT_UNAVAILABLE		0x28
@@ -549,11 +550,12 @@ typedef struct {
 #define CTIO7_FLAGS_DONT_RET_CTIO	BIT_8
 #define CTIO7_FLAGS_STATUS_MODE_0	0
 #define CTIO7_FLAGS_STATUS_MODE_1	BIT_6
+#define CTIO7_FLAGS_STATUS_MODE_2	BIT_7
 #define CTIO7_FLAGS_EXPLICIT_CONFORM	BIT_5
 #define CTIO7_FLAGS_CONFIRM_SATISF	BIT_4
 #define CTIO7_FLAGS_DSD_PTR		BIT_2
-#define CTIO7_FLAGS_DATA_IN		BIT_1
-#define CTIO7_FLAGS_DATA_OUT		BIT_0
+#define CTIO7_FLAGS_DATA_IN		BIT_1 /* data to initiator */
+#define CTIO7_FLAGS_DATA_OUT		BIT_0 /* data from initiator */
 
 /*
  * ISP queue - immediate notify entry structure definition for 24xx.
@@ -777,6 +779,66 @@ typedef struct {
 	uint32_t error_subcode2;
 	uint32_t exchange_addr_to_abort;
 } __attribute__((packed)) abts24_resp_fw_entry_t;
+
+
+/*
+ *CTIO Type CRC_2 IOCB
+ */
+struct ctio_crc2_to_fw {
+	uint8_t entry_type;
+#define CTIO_CRC2 0x7A
+	uint8_t entry_count;
+	uint8_t sys_define;
+	uint8_t entry_status;
+
+	uint32_t handle;		/* System handle. */
+	uint16_t nport_handle;
+	uint16_t timeout;		/* Command timeout. */
+	uint16_t dseg_count;		/* Data segment count. */
+	uint8_t  vp_index;
+	uint8_t  add_flags;		/* additional flags */
+#define CTIO_CRC2_AF_DIF_DSD_ENA BIT_3
+	uint8_t  initiator_id[3];
+	uint8_t  reserved1;
+	uint32_t exchange_addr;		/* rcv exchange address */
+	uint16_t reserved2;
+	uint16_t flags;			/* refer to CTIO7 flags values */
+	uint32_t residual;
+	uint16_t ox_id;
+	uint16_t scsi_status;
+	uint32_t relative_offset;
+	uint32_t reserved5;
+	uint32_t transfer_length;	/* total fc transfer length */
+	uint32_t reserved6;
+	uint32_t crc_context_address[2];/* Data segment address. */
+	uint16_t crc_context_len;	/* Data segment length. */
+	uint16_t reserved_1;		/* MUST be set to 0. */
+} __attribute__((packed));
+
+/* CTIO Type CRC_x Status IOCB */
+struct ctio_crc_from_fw {
+	uint8_t entry_type;
+	uint8_t entry_count;
+	uint8_t sys_define;
+	uint8_t entry_status;
+	uint32_t handle;
+	uint16_t status;
+	uint16_t timeout;		/* Command timeout. */
+	uint16_t dseg_count;		/* Data segment count. */
+	uint32_t reserved1;
+	uint16_t state_flags;
+#define CTIO_CRC_SF_DIF_CHOPPED BIT_4
+	uint32_t exchange_address;	/* rcv exchange address */
+	uint16_t reserved2;
+	uint16_t flags;
+	uint32_t resid_xfer_length;
+	uint16_t ox_id;
+	uint8_t  reserved3[12];
+	uint16_t runt_guard;		/* reported runt blk guard */
+	uint8_t  actual_dif[8];
+	uint8_t  expected_dif[8];
+} __attribute__((packed));
+
 
 /********************************************************************\
  * Type Definitions used by initiator & target halves

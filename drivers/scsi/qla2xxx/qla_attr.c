@@ -306,7 +306,7 @@ qla2x00_show_resource_counts(struct device *dev,
 			"Orig Init exchg cnt[%d]\n"
 			"Cur IOCB [%d]\n"
 			"Orig IOCB [%d]\n"
-			"VPs[%d] FCF[%d] \n"	,
+			"VPs[%d] FCF[%d] \n",
 			mc.mb[1], mc.mb[2],mc.mb[3],
 			mc.mb[6], mc.mb[7],mc.mb[10],
 			mc.mb[11], mc.mb[12]);
@@ -2933,8 +2933,8 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 			qla2x00_port_logout(fcport->vha, fcport);
 	}
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) && !defined(CONFIG_SUSE_KERNEL)
-	scsi_target_unblock(&rport->dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) && !defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 32)
+	scsi_target_unblock(&rport->dev, SDEV_BLOCK);
 #endif
 #endif
 }
