@@ -3624,7 +3624,7 @@ void qla2x00_mark_device_lost(scsi_qla_host_t *vha, fc_port_t *fcport,
 		    fcport->loop_id, fcport->login_retry);
 	}
 }
-
+EXPORT_SYMBOL(qla2x00_mark_device_lost);
 /*
  * qla2x00_mark_all_devices_lost
  *	Updates fcport state when device goes offline.

@@ -433,6 +433,38 @@ static inline struct q2t_sess *q2t_find_sess_by_port_name(struct q2t_tgt *tgt,
 	return NULL;
 }
 
+/* ha->hardware_lock supposed to be held on entry (to protect tgt->sess_list) */
+static inline void q2t_invalidate_other_sess(struct q2t_tgt *tgt,
+	const struct q2t_sess *sess)
+{
+	struct q2t_sess *other_sess;
+	uint64_t wwn, other_wwn;
+
+	wwn = wwn_to_u64((u8*)sess->port_name);
+
+	list_for_each_entry(other_sess, &tgt->sess_list, sess_list_entry) {
+		/* other sess has stale nport_id */
+		if (sess->s_id.b24 && (sess->s_id.b24 == other_sess->s_id.b24)){
+			other_wwn = wwn_to_u64(other_sess->port_name);
+			if (wwn != other_wwn) {
+				EXTRACHECKS_BUG_ON(other_sess->deleted);
+
+				other_sess->login_state = Q2T_LOGIN_STATE_NONE;
+				other_sess->conf_compl_supported = 0;
+				other_sess->s_id.b24 = 0;
+
+				if (other_sess->qla_fcport)
+					/* mark dev lost to trigger a logout
+					 * or cleanup the slot.
+					 */
+					qla2x00_mark_device_lost(tgt->ha,
+						other_sess->qla_fcport,1,1);
+			}
+		}
+	}
+	return;
+}
+
 /* ha->hardware_lock supposed to be held on entry */
 static inline struct q2t_sess *q2t_find_sess_by_port_name_include_deleted(
 	struct q2t_tgt *tgt, const uint8_t *port_name)
@@ -4933,6 +4965,8 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			TRACE_MGMT_DBG("ELS PRLI rcv portid=%06x hndl 0x%x",
 				sess->s_id.b24,
 				le16_to_cpu(inot->nport_handle));
+			/* invalidate other session with the same s_id */
+			q2t_invalidate_other_sess(tgt, sess);
 		}
 
 		/* There is no need to reach over to initator side,
