@@ -270,6 +270,13 @@ qla2x00_handle_mbx_completion(struct qla_hw_data *ha, int status)
 	}
 }
 
+static inline void
+qla2x00_set_retry_delay_timestamp(fc_port_t *fcport, uint16_t retry_delay)
+{
+	if (retry_delay)
+		fcport->retry_delay_timestamp = jiffies +
+		    (retry_delay * HZ / 10);
+}
 
 #ifdef QLA_QRATE
 static inline void

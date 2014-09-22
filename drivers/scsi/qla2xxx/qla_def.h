@@ -264,6 +264,11 @@ typedef struct {
 					     * reset-recovery completion is
 					     * second
 					     */
+/* ISP2031: Values for laser on/off */
+#define PORT_0_2031	0x00201340
+#define PORT_1_2031	0x00201350
+#define LASER_ON_2031	0x01800100
+#define LASER_OFF_2031	0x01800180
 
 /*
  * The ISP2312 v2 chip cannot access the FLASH/GPIO registers via MMIO in an
@@ -2100,6 +2105,8 @@ typedef struct fc_port {
 	unsigned long last_ramp_up;
 
 	uint16_t port_id;
+
+	unsigned long retry_delay_timestamp;
 } fc_port_t;
 
 #include "qla_mr.h"
@@ -3124,12 +3131,13 @@ struct qla_hw_data {
 		uint32_t	nic_core_reset_owner:1;
 		uint32_t	isp82xx_no_md_cap:1;
 		uint32_t	idc_compl_status:1;
-
 		uint32_t	mr_reset_hdlr_active:1;
 		uint32_t	mr_intr_valid:1;
-
 		uint32_t	exlogins_enabled:1;
+
 		/* 33 bits */
+		uint32_t        fawwpn_enabled:1;
+
 	} flags;
 
 	/* This spinlock is used to protect "io transactions", you must
@@ -3326,6 +3334,7 @@ struct qla_hw_data {
 #define IS_PI_SPLIT_DET_CAPABLE(ha)	(IS_PI_SPLIT_DET_CAPABLE_HBA(ha) && \
     (((ha)->fw_attributes_h << 16 | (ha)->fw_attributes) & BIT_22))
 #define IS_SHADOW_REG_CAPABLE(ha)	(IS_QLA27XX(ha))
+#define IS_DPORT_CAPABLE(ha) (IS_QLA83XX(ha) || IS_QLA27XX(ha))
 
 	/* HBA serial number */
 	uint8_t		serial0;
