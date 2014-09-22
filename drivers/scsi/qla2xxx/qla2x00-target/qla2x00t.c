@@ -7,7 +7,7 @@
  *  Copyright (C) 2007 - 2014 Fusion-io, Inc.
  *  Copyright (C) 2013 - 2014 Qlogic Inc.
  *
- *  QLogic 22xx/23xx/24xx/25xx FC target driver.
+ *  QLogic 22xx+ FC target driver.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
