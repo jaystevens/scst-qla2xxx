@@ -4946,6 +4946,12 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 	{
 		wd3_lo = le16_to_cpu(inot->u.prli.wd3_lo);
 		wwn = wwn_to_u64(inot->port_name);
+
+		TRACE_MGMT_DBG("ELS PRLI rcv 0x%llx portid=%02x%02x%02x "
+			"hndl 0x%x", wwn,
+			inot->port_id[2],inot->port_id[1],inot->port_id[0],
+			le16_to_cpu(inot->nport_handle));
+
 		if (wwn)
 			sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
 		else
@@ -6449,13 +6455,14 @@ out:
 	return res;
 }
 
+
 /* Must be called under tgt_mutex */
 static struct q2t_sess *q2t_make_local_sess(scsi_qla_host_t *vha,
-	const uint8_t *s_id, uint16_t loop_id, uint64_t wwn)
+	const uint8_t *s_id, uint16_t loop_id, uint64_t wwn, uint8_t verify)
 {
 	struct q2t_sess *sess = NULL;
 	fc_port_t *fcport = NULL;
-	int rc, global_resets;
+	int rc, global_resets=0;
 	struct qla_hw_data *ha = vha->hw;
 	uint8_t found = 0;
 
@@ -6471,6 +6478,9 @@ static struct q2t_sess *q2t_make_local_sess(scsi_qla_host_t *vha,
 	}
 
 retry:
+
+	if (verify) {
+
 	global_resets = atomic_read(&vha->vha_tgt.tgt->tgt_global_resets_count);
 
 	if (IS_FWI2_CAPABLE(ha)) {
@@ -6496,6 +6506,18 @@ retry:
 		}
 	}
 
+	} else if ((s_id[0] == 0xFF) &&
+		(s_id[1] == 0xFC)) { /* !verify */
+		/*
+		 * This is Domain Controller, so it should be
+		 * OK to drop SCSI commands from it.
+		 */
+		TRACE_MGMT_DBG("Unable to find initiator with "
+			"S_ID %x:%x:%x", s_id[0], s_id[1],
+			s_id[2]);
+		goto out;
+	}
+
 	fcport = kzalloc(sizeof(*fcport), GFP_KERNEL);
 	if (fcport == NULL) {
 		PRINT_ERROR("qla2x00t(%ld): Allocation of tmp FC port failed",
@@ -6510,7 +6532,12 @@ retry:
 	fcport->port_type = FCT_UNKNOWN;
 	atomic_set(&fcport->state, FCS_UNCONFIGURED);
 	fcport->supported_classes = FC_COS_UNSPECIFIED;
+	fcport->d_id.b.al_pa = s_id[2];
+	fcport->d_id.b.area  = s_id[1];
+	fcport->d_id.b.domain= s_id[0];
+	fcport->d_id.b.rsvd_1 = 0;
 
+	if (verify) {
 	rc = qla2x00_get_port_database(vha, fcport, 0);
 	if (rc != QLA_SUCCESS) {
 		TRACE_MGMT_DBG("qla2x00t(%ld): Failed to retrieve fcport "
@@ -6530,6 +6557,7 @@ retry:
 		fcport = NULL;
 		goto retry;
 	}
+	} /* verify */
 
 skip_fcport_alloc:
 	sess = q2t_create_sess(vha, fcport, true);
@@ -6563,7 +6591,7 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 	int rc;
 	struct q2t_sess *sess = NULL;
 	uint8_t *s_id = NULL; /* to hide compiler warnings */
-	uint8_t local_s_id[3];
+	uint8_t local_s_id[3], verify=1;
 	int loop_id = -1; /* to hide compiler warnings */
 #if 0
 	int login_state;
@@ -6661,9 +6689,19 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			else
 				sess = q2t_find_sess_by_loop_id(tgt, loop_id);
 
-			if (sess && sess->deleted) {
+			if (sess) {
+				if (sess->deleted)
 				/* allow make local to bring back the session */
-				sess = NULL;
+					sess = NULL;
+			} else if (prm->inot.status_subcode == ELS_PLOGI) {
+				/*
+				 * q2t_make_local_sess will verify with FW
+				 * of the wwpn+s_id.  At this point, FW have
+				 * not finish creating this remote fc port.
+				 * Verfication will failed.  Just create the
+				 * session for now.
+				 */
+				verify=0;
 			}
 
 			goto after_find;
@@ -6763,7 +6801,7 @@ after_find:
 		 * behind us.
 		 */
 		spin_unlock_irq(&ha->hardware_lock);
-		sess = q2t_make_local_sess(vha, s_id, loop_id, wwn);
+		sess = q2t_make_local_sess(vha, s_id, loop_id, wwn, verify);
 		spin_lock_irq(&ha->hardware_lock);
 		/* sess has got an extra creation ref */
 	}
