@@ -5839,6 +5839,7 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 {
 	int rc;
 	struct q2t_tgt *tgt = vha->vha_tgt.tgt;
+	unsigned long tgt_stop = tgt->tgt_stop;
 
 	TRACE_ENTRY();
 
@@ -5846,6 +5847,7 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 		TRACE_MGMT_DBG("ATIO pkt, but no tgt (vha %p)", vha);
 		goto out;
 	}
+
 
 	TRACE(TRACE_SCSI, "qla2x00t(%ld): ATIO pkt %p: type %02x count %02x",
 	      vha->host_no, atio, atio->entry_type, atio->entry_count);
@@ -5855,7 +5857,8 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 	 * Otherwise, some commands can stuck.
 	 */
 
-	tgt->irq_cmd_count++;
+	if (!tgt_stop)
+		tgt->irq_cmd_count++;
 
 	switch (atio->entry_type) {
 	case ATIO_TYPE7:
@@ -5919,7 +5922,8 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 		break;
 	}
 
-	tgt->irq_cmd_count--;
+	if (!tgt_stop)
+		tgt->irq_cmd_count--;
 
 out:
 	TRACE_EXIT();
@@ -5938,6 +5942,7 @@ void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)
 	unsigned long flags;
 	atio7_entry_t *atio = (atio7_entry_t *)pkt;
 	scsi_qla_host_t *host = vha;
+	unsigned long tgt_stop = tgt->tgt_stop;
 
 	TRACE_ENTRY();
 
@@ -6010,12 +6015,14 @@ void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)
 		be16_to_cpu(atio->fcp_hdr.ox_id), atio->fcp_cmnd.cdb[0],
 		atio->fcp_cmnd.task_mgmt_flags);
 
+
 	/*
 	 * In tgt_stop mode we also should allow all requests to pass.
 	 * Otherwise, some commands can stuck.
 	 */
 
-	tgt->irq_cmd_count++;
+	if (!tgt_stop)
+		tgt->irq_cmd_count++;
 
 	switch (atio->entry_type) {
 	case ATIO_TYPE7:
@@ -6092,7 +6099,8 @@ void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)
 		break;
 	}
 
-	tgt->irq_cmd_count--;
+	if (!tgt_stop)
+		tgt->irq_cmd_count--;
 
 out:
 	TRACE_EXIT();
