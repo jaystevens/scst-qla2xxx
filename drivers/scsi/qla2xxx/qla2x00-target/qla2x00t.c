@@ -6881,7 +6881,7 @@ send2:
 		ctio7_fw_entry_t *entry = (ctio7_fw_entry_t *)&cmd->rsp_pkt;
 		rc = 0;
 		status = le16_to_cpu(entry->status)|(entry->entry_status << 16);
-		q2t_term_ctio_exchange(vha, (void*)&prm->tm_iocb, cmd, status);
+		q2t_term_ctio_exchange(vha, (void*)entry, cmd, status);
 		break;
 	}
 
@@ -7619,7 +7619,7 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 	struct q2t_cmd *cmd;
 	struct scst_cmd *scst_cmd;
 	ctio7_fw_entry_t *entry;
-	uint32_t status;
+	uint32_t status, qcmd=0;
 	unsigned long flags;
 
 	struct scsi_qlt_host *vha_tgt = &vha->vha_tgt;
@@ -7680,7 +7680,7 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 				"op %x (LIP_RESET=e, ABORTED=2, TARGET_RESET=17, "
 				"TIMEOUT=b, INVALID_RX_ID=8)", vha->host_no,
 				status, cmd->state, scst_cmd, scst_cmd->cdb[0]);
-			goto out;
+			break;
 
 		case CTIO_PORT_LOGGED_OUT:
 		case CTIO_PORT_UNAVAILABLE:
@@ -7689,11 +7689,11 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 				"received (state %x, scst_cmd %p, op %x)",
 				vha->host_no, status, cmd->state, scst_cmd,
 				scst_cmd->cdb[0]);
-			goto out;
+			break;
 
 		case CTIO_SRR_RECEIVED:
 			if (q2t_prepare_srr_ctio(vha, cmd, pkt) != 0)
-				goto out;
+				break;
 			else
 				goto out;
 
@@ -7702,17 +7702,23 @@ void q2t_process_ctio (scsi_qla_host_t *vha, response_t *pkt)
 				"0x%x received (state %x, scst_cmd %p, op %x)",
 				vha->host_no, status, cmd->state, scst_cmd,
 				scst_cmd->cdb[0]);
-			goto out;
+			break;
 		}
 
 		if (cmd->state != Q2T_STATE_NEED_DATA) {
 			memcpy(&cmd->rsp_pkt, pkt, sizeof(response_t));
 			// passing cmd pointer only not the entire cmd;
 			q2t_sched_sess_work(vha_tgt->tgt,
-				Q2T_SESS_WORK_TERM_WCMD,cmd, sizeof(cmd));
+				Q2T_SESS_WORK_TERM_WCMD, &cmd, sizeof(cmd));
+		} else {
+			qcmd=1;
 		}
-	} else {
+	} else  {
 		/* no error from ctio */
+		qcmd=1;
+	}
+
+	if (qcmd) {
 		spin_lock_irqsave(&rthr->rx_pendq_lock, flags);
 		//memcpy((void*)&cmd->rsp_pkt,(void*) pkt, sizeof(response_t));
 		list_add_tail(&cmd->list_entry, &rthr->rx_pend_queue);
