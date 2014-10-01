@@ -2840,6 +2840,9 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		ha->flash_data_off = FARX_ACCESS_FLASH_DATA_81XX;
 		ha->nvram_conf_off = ~0;
 		ha->nvram_data_off = ~0;
+#ifdef CONFIG_SCSI_QLA2XXX_TARGET
+		ha->ha_tgt.atio_q_length = ATIO_ENTRY_CNT_24XX;
+#endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 	}
 
 	ql_dbg_pci(ql_dbg_init, pdev, 0x001e,
