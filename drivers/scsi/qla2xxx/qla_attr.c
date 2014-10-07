@@ -288,7 +288,7 @@ qla2x00_show_resource_counts(struct device *dev,
 
 	mc.mb[0] = MBC_GET_RESOURCE_COUNTS;
 	mc.out_mb = MBX_0;
-	mc.in_mb = MBX_0|MBX_1|MBX_2;
+	mc.in_mb = MBX_0|MBX_1|MBX_2|MBX_3|MBX_6|MBX_7|MBX_10|MBX_11|MBX_12;
 	mc.tov = 30;
 	mc.flags = 0;
 
@@ -300,8 +300,16 @@ qla2x00_show_resource_counts(struct device *dev,
 			rval, mc.mb[0]);
 	} else {
 		size = scnprintf(buffer, max_size,
-			"immed_notify\t%d\ncommand\t\t%d\n",
-			mc.mb[2], mc.mb[1]);
+			"Orig TGT exchg cnt[%d]\n"
+			"Cur TGT exchg cnt[%d]\n"
+			"Cur Init exchg cnt[%d]\n"
+			"Orig Init exchg cnt[%d]\n"
+			"Cur IOCB [%d]\n"
+			"Orig IOCB [%d]\n"
+			"VPs[%d] FCF[%d] \n"	,
+			mc.mb[1], mc.mb[2],mc.mb[3],
+			mc.mb[6], mc.mb[7],mc.mb[10],
+			mc.mb[11], mc.mb[12]);
 	}
 
 	return size;
