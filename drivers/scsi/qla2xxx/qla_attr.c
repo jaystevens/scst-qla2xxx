@@ -2914,7 +2914,7 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 	}
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) && !defined(CONFIG_SUSE_KERNEL)
-	scsi_target_unblock(&rport->dev, SDEV_BLOCK);
+	scsi_target_unblock(&rport->dev);
 #endif
 #endif
 }
@@ -3275,10 +3275,12 @@ qla24xx_vport_delete(struct fc_vport *fc_vport)
 		    "Timer for the VP[%d] has stopped\n", vha->vp_idx);
 	}
 
+#if 0
 	/* No pending activities shall be there on the vha now */
 	if (ql2xextended_error_logging & ql_dbg_user)
 		msleep(prandom_u32()%10);  /* Just to see if something falls on
 					* the net we have placed below */
+#endif
 
 	BUG_ON(atomic_read(&vha->vref_count));
 
