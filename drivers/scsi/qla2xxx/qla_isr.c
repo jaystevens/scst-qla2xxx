@@ -2685,6 +2685,7 @@ qla24xx_process_atio_queue(struct scsi_qla_host *vha)
 
 	/* Adjust ring index */
 	WRT_REG_DWORD(ISP_ATIO_Q_OUT(vha), ha_tgt->atio_ring_index);
+	RD_REG_DWORD_RELAXED(ISP_ATIO_Q_OUT(vha));
 }
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
@@ -3351,6 +3352,7 @@ qla83xx_msix_atio_q_nolock(int irq, void *dev_id)
 
 	/* Adjust ring index */
 	WRT_REG_DWORD(ISP_ATIO_Q_OUT(vha), ha_tgt->atio_ring_index);
+	RD_REG_DWORD_RELAXED(ISP_ATIO_Q_OUT(vha));
 
 	return IRQ_HANDLED;
 }
