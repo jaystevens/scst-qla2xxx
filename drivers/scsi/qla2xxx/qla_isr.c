@@ -1215,6 +1215,7 @@ skip_rio:
 	case MBA_LOOP_UP:		/* Loop Up Event */
 	case MBA_LOOP_DOWN:		/* Loop Down Event */
 	case MBA_LIP_RESET:		/* LIP reset occurred */
+	case MBA_REJECTED_FCP_CMD:	/* Queue full */
 		if (qla_target.tgt_async_event)
 			qla_target.tgt_async_event(mb[0], vha, mb);
 	}
