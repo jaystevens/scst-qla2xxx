@@ -4907,6 +4907,9 @@ qla2x00_abort_isp(scsi_qla_host_t *vha)
 	unsigned long flags;
 
 	if (vha->flags.online) {
+		if (ha->heartbeat_active)
+			qla2x00_stop_drv_heartbeat(vha);
+
 		qla2x00_abort_isp_cleanup(vha);
 
 		if (IS_QLA8031(ha)) {

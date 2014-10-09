@@ -76,6 +76,8 @@ static uint32_t ql_dbg_offset = 0x800;
 static inline void
 qla2xxx_prep_dump(struct qla_hw_data *ha, struct qla2xxx_fw_dump *fw_dump)
 {
+	scsi_qla_host_t *base_vha;
+
 	fw_dump->fw_major_version = htonl(ha->fw_major_version);
 	fw_dump->fw_minor_version = htonl(ha->fw_minor_version);
 	fw_dump->fw_subminor_version = htonl(ha->fw_subminor_version);
@@ -85,6 +87,12 @@ qla2xxx_prep_dump(struct qla_hw_data *ha, struct qla2xxx_fw_dump *fw_dump)
 	fw_dump->device = htonl(ha->pdev->device);
 	fw_dump->subsystem_vendor = htonl(ha->pdev->subsystem_vendor);
 	fw_dump->subsystem_device = htonl(ha->pdev->subsystem_device);
+	if (ha->heartbeat_active) {
+		base_vha = pci_get_drvdata(ha->pdev);
+		printk("pre-fwdump: Stopping Heartbeat timer\n");
+		qla2x00_set_driver_heartbeat(base_vha, 0, 0);
+		qla2x00_stop_drv_heartbeat(base_vha);
+	}
 }
 
 static inline void *
@@ -669,6 +677,9 @@ qla2xxx_dump_post_process(scsi_qla_host_t *vha, int rval)
 		    vha->host_no, ha->fw_dump, ha->fw_dump_cap_flags);
 		ha->fw_dumped = 1;
 		qla2x00_post_uevent_work(vha, QLA_UEVENT_CODE_FW_DUMP);
+
+		if (ha->heartbeat_interval)
+			qla2x00_start_drv_heartbeat(vha, ha->heartbeat_interval);
 	}
 }
 

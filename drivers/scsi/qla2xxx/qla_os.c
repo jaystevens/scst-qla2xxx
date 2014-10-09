@@ -405,7 +405,7 @@ qla2x00_start_drv_heartbeat(scsi_qla_host_t *vha, unsigned long interval)
 	ha->heartbeat_active = 0;
 	ha->heartbeat_count = 0;
 	ha->heartbeat_retries = 0;
-	/* Not FCoE and 24xx and 25xx */
+	/* Not FCoE, 24xx and 25xx */
 	if ( !(IS_QLA24XX(ha) || IS_QLA2432(ha) ||
 		IS_QLA25XX(ha) || IS_QLA2031(ha) || IS_QLA27XX(ha)) ) {
 		return;
@@ -414,25 +414,27 @@ qla2x00_start_drv_heartbeat(scsi_qla_host_t *vha, unsigned long interval)
 	if (ha->current_topology == ISP_CFG_FL)
 		return;
 
-	ha->heartbeat_interval = (interval < 4096 && interval >= 10 )? interval : 10;
+	ha->heartbeat_interval = 
+		(interval < 4096 && interval >= 10 )? interval : 10;
 	ha->heartbeat_active = 1;
 	ql_log(ql_log_warn, vha, 0x015c,
-	    "Setting Driver heartbeat to (%u) secs.\n",
+	    "Start Driver timer for F/W heartbeat to (%u) secs.\n",
 		ha->heartbeat_interval);
 	schedule_delayed_work(&ha->driver_heartbeat_wk,
 			(ha->heartbeat_interval*HZ));
 }
 
-static inline void
+void
 qla2x00_stop_drv_heartbeat(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
 
-	ql_log(ql_log_warn, vha, 0x015c,
-		"%s: ha %p \n",__func__, ha);
-
-	ha->heartbeat_active = 0;
-	cancel_delayed_work(&ha->driver_heartbeat_wk);
+	if (ha->heartbeat_active) {
+		ha->heartbeat_active = 0;
+		cancel_delayed_work(&ha->driver_heartbeat_wk);
+		ql_log(ql_log_warn, vha, 0x015c,
+	    		"Cancel timer for driver heartbeat.\n");
+	}
 }
 
 static int qla2x00_do_dpc(void *data);
@@ -5398,18 +5400,26 @@ void qla2x00_driver_heartbeat(void *work)
 	ha->heartbeat_count++;
 
 	ql_dbg(ql_dbg_timer, base_vha, 0x015c,
-		"Send DD heartbeat to F/W %llu count, curtime %lu sec\n",
+		"Send heartbeat to F/W %llu count, curtime %lu sec\n",
 		ha->heartbeat_count, (jiffies/HZ));
 
 	if (!ha->heartbeat_active) {
 		/* interval=0 means turn off heartbeat */
+		if (base_vha) {
+		// printk("Setting f/w timer OFF , base_vhba %p\n", base_vha);
 		rval = qla2x00_set_driver_heartbeat(base_vha, 0, 0);
-		qla2x00_stop_drv_heartbeat(base_vha);
+		}
 	} else {
-		/* Alway cut driver interval in half, so we timeout before F/W */
-		rval = qla2x00_set_driver_heartbeat(base_vha,
-			ha->heartbeat_interval, 0);
-
+		/* Alway cut S/W timer interval in half, so we timeout before F/W */
+	if (base_vha->flags.online && !base_vha->flags.reset_active &&
+	    !atomic_read(&base_vha->loop_down_timer) &&
+	    !(test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags))) {
+			// printk("Setting f/w timer, base_vhba %p\n", base_vha);
+			rval = qla2x00_set_driver_heartbeat(base_vha,
+				ha->heartbeat_interval, 0);
+		} else {
+			rval = QLA_FUNCTION_FAILED;
+		}
 		if (rval != QLA_SUCCESS) {
 			/* stop trying after 3 retries */
 			if ((ha->heartbeat_count > 1) &&
@@ -5423,6 +5433,10 @@ void qla2x00_driver_heartbeat(void *work)
 			interval = ha->heartbeat_interval / 2;
 			schedule_delayed_work(&ha->driver_heartbeat_wk,
 					(interval*HZ));
+			ha->heartbeat_retries=0;
+			ql_log(ql_log_warn, base_vha, 0x015c,
+	    		"Resetting S/W timer for heartbeat (%u) secs.\n",
+				interval);
 		}
 	}
 
@@ -5797,6 +5811,7 @@ qla2x00_timer(scsi_qla_host_t *vha)
 		qla2x00_restart_timer(vha, WATCH_INTERVAL);
 		return;
 	}
+
 
 	/*
 	 * Hardware read to raise pending EEH errors during mailbox waits. If

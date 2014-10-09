@@ -184,6 +184,7 @@ extern void
 qla2x00_free_exlogin_buffer(struct qla_hw_data *);
 extern void qla2x00_start_drv_heartbeat(scsi_qla_host_t *, unsigned long);
 extern int qla2x00_set_driver_heartbeat(scsi_qla_host_t *, uint16_t,uint16_t);
+extern void qla2x00_stop_drv_heartbeat(scsi_qla_host_t *vha);
 
 /*
  * Global Functions in qla_mid.c source file.
