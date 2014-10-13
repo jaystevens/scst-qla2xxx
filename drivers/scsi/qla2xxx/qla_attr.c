@@ -3275,9 +3275,13 @@ qla24xx_vport_delete(struct fc_vport *fc_vport)
 		    "Timer for the VP[%d] has stopped\n", vha->vp_idx);
 	}
 
-#if 0
+
 	/* No pending activities shall be there on the vha now */
 	if (ql2xextended_error_logging & ql_dbg_user)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+		msleep(random32()%10);  /* Just to see if something falls on
+					* the net we have placed below */
+#else
 		msleep(prandom_u32()%10);  /* Just to see if something falls on
 					* the net we have placed below */
 #endif
