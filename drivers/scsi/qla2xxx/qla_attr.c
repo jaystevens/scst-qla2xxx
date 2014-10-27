@@ -2963,7 +2963,8 @@ qla2x00_get_fc_host_stats(struct Scsi_Host *shost)
 		    "Failed to allocate memory for stats.\n");
 		goto done;
 	}
-	memset(stats, 0, DMA_POOL_SIZE);
+	BUG_ON(sizeof(*stats) > DMA_POOL_SIZE);
+	memset(stats, 0, sizeof(*stats));
 
 	rval = QLA_FUNCTION_FAILED;
 	if (IS_FWI2_CAPABLE(ha)) {
