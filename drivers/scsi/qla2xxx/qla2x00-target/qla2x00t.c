@@ -5846,7 +5846,7 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 {
 	int rc;
 	struct q2t_tgt *tgt = vha->vha_tgt.tgt;
-	unsigned long tgt_stop = tgt->tgt_stop;
+	unsigned long tgt_stop;
 
 	TRACE_ENTRY();
 
@@ -5864,6 +5864,7 @@ static void q24_atio_pkt(scsi_qla_host_t *vha, atio7_entry_t *atio)
 	 * Otherwise, some commands can stuck.
 	 */
 
+	tgt_stop = tgt->tgt_stop;
 	if (!tgt_stop)
 		tgt->irq_cmd_count++;
 
@@ -5949,7 +5950,7 @@ void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)
 	unsigned long flags;
 	atio7_entry_t *atio = (atio7_entry_t *)pkt;
 	scsi_qla_host_t *host = vha;
-	unsigned long tgt_stop = tgt->tgt_stop;
+	unsigned long tgt_stop;
 
 	TRACE_ENTRY();
 
@@ -6027,7 +6028,7 @@ void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)
 	 * In tgt_stop mode we also should allow all requests to pass.
 	 * Otherwise, some commands can stuck.
 	 */
-
+	tgt_stop = tgt->tgt_stop;
 	if (!tgt_stop)
 		tgt->irq_cmd_count++;
 
