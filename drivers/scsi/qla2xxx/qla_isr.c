@@ -1046,7 +1046,9 @@ skip_rio:
 				continue;
 			tmp_pid = fcport->d_id.b24;
 			if (fcport->d_id.b24 == rscn_entry) {
+#ifndef CONFIG_SCSI_QLA2XXX_TARGET
 				qla2x00_mark_device_lost(vha, fcport, 0, 0);
+#endif
 				break;
 			}
 		}
