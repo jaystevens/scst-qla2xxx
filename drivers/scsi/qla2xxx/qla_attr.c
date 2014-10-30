@@ -803,7 +803,8 @@ qla2x00_laser_show(struct device *dev, struct device_attribute *attr,
 /* end of laser */
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_fw_dump(
 #else
 qla2x00_sysfs_read_fw_dump(struct file *filp,
@@ -841,7 +842,8 @@ qla2x00_sysfs_read_fw_dump(struct file *filp,
 }
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_fw_dump(
 #else
 qla2x00_sysfs_write_fw_dump(struct file *filp,
@@ -944,7 +946,8 @@ static struct bin_attribute sysfs_fw_dump_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_fw_dump_template(
 #else
 qla2x00_sysfs_read_fw_dump_template(struct file *filp,
@@ -967,7 +970,8 @@ qla2x00_sysfs_read_fw_dump_template(struct file *filp,
 }
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+(defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_fw_dump_template(
 #else
 qla2x00_sysfs_write_fw_dump_template(struct file *filp,
@@ -1040,7 +1044,8 @@ static struct bin_attribute sysfs_fw_dump_template_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_nvram(
 #else
 qla2x00_sysfs_read_nvram(struct file *file,
@@ -1064,7 +1069,8 @@ qla2x00_sysfs_read_nvram(struct file *file,
 }
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_nvram(
 #else
 qla2x00_sysfs_write_nvram(struct file *filp,
@@ -1137,7 +1143,8 @@ static struct bin_attribute sysfs_nvram_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_optrom(
 #else
 qla2x00_sysfs_read_optrom(struct file *file,
@@ -1163,7 +1170,8 @@ qla2x00_sysfs_read_optrom(struct file *file,
 }
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_optrom(
 #else
 qla2x00_sysfs_write_optrom(struct file *file,
@@ -1201,7 +1209,8 @@ static struct bin_attribute sysfs_optrom_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_optrom_ctl(
 #else
 qla2x00_sysfs_write_optrom_ctl(struct file *file,
@@ -1387,7 +1396,8 @@ static struct bin_attribute sysfs_optrom_ctl_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_vpd(
 #else
 qla2x00_sysfs_read_vpd(struct file *file,
@@ -1413,7 +1423,8 @@ qla2x00_sysfs_read_vpd(struct file *file,
 }
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_vpd(
 #else
 qla2x00_sysfs_write_vpd(struct file *file,
@@ -1471,7 +1482,8 @@ static struct bin_attribute sysfs_vpd_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_sfp(
 #else
 qla2x00_sysfs_read_sfp(struct file *file,
@@ -1537,7 +1549,8 @@ static struct bin_attribute sysfs_sfp_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_write_reset(
 #else
 qla2x00_sysfs_write_reset(struct file *filp,
@@ -1676,7 +1689,8 @@ static struct bin_attribute sysfs_reset_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_xgmac_stats(
 #else
 qla2x00_sysfs_read_xgmac_stats(struct file *filp,
@@ -1733,7 +1747,8 @@ static struct bin_attribute sysfs_xgmac_stats_attr = {
 };
 
 static ssize_t
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)))
 qla2x00_sysfs_read_dcbx_tlv(
 #else
 qla2x00_sysfs_read_dcbx_tlv(struct file *filp,
@@ -3167,7 +3182,10 @@ qla24xx_vport_create(struct fc_vport *fc_vport, bool disable)
 	}
 
 	/* initialize attributes */
+#if !defined(CONFIG_SUSE_KERNEL) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
 	fc_host_dev_loss_tmo(vha->host) = ha->port_down_retry_count;
+#endif
 	fc_host_node_name(vha->host) = wwn_to_u64(vha->node_name);
 	fc_host_port_name(vha->host) = wwn_to_u64(vha->port_name);
 	fc_host_supported_classes(vha->host) =
@@ -3419,7 +3437,10 @@ qla2x00_init_host_attr(scsi_qla_host_t *vha)
 	struct qla_hw_data *ha = vha->hw;
 	u32 speed = FC_PORTSPEED_UNKNOWN;
 
+#if !defined(CONFIG_SUSE_KERNEL) ||\
+ (defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
 	fc_host_dev_loss_tmo(vha->host) = ha->port_down_retry_count;
+#endif
 	fc_host_node_name(vha->host) = wwn_to_u64(vha->node_name);
 	fc_host_port_name(vha->host) = wwn_to_u64(vha->port_name);
 	fc_host_supported_classes(vha->host) = ha->ha_tgt.enable_class_2 ?
