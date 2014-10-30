@@ -5,80 +5,82 @@
                                         All rights reserved.
 
 Table of Contents
-
- 1. Version
- 2. Changes
- 3. Bug Fixes
- 4. Known Issues
- 5. History
- 6. Additional Information
- 7. Trademarks
- 8. Notices
- 9. Contacting Support
+1. Change History
+2. Additional Notes
+2. Known Issues
+3. Notices
+4. Contacting Support 
 
 
-1. Version
+1. Changes History
 
-These release notes describe the changes, fixes, known issues, and
-release details that apply to Fibre Channel and FCoE Adapter Inbox
-Driver Update based on the following Linux Kernel versions (3.10.x).
+* 8.07.00.16.Trunk-SCST.15-k
+  * Enable ISP27xx/32G/16G for Target mode
+  * Added PRLI Service parameter control
+  * Mark port lost when we receive an RSCN for it.
+  * Disable PCI device in shutdown handler.
+  * Fail adapter initialization on load ram failure.
+  * Move warning message to debug level.
+  * Restore WWPN from flash when cable pulled for FA-WWPN port.
+  * 8.07.00.15.xx.y-k
+  * Restore WWPN in case of Loop Dead.
+  * Honor FCP_RSP retry delay timer field.
+  * Add missing ISP27xx checks to optrom code.
+  * Force use of mailbox interface for flash access commands for ISP27xx.
+  * Fix mismatch is checks to free sysfs nodes.
+  * Disable laser for ISP2031 while unloading driver.
+  * Enable DPORT using NVRAM parameters. 
 
-    RHEL 7.0  -- 8.07.00.11.Trunk-SCST.13-k
+* 8.07.00.14.Trunk-SCST.14-k
+  * Add fix in driver unload for pending activity.
+  * Allow user to change ql2xfdmienable value.
+  * Declaration error cause stack corruption.
+  * Fix duplicate log message ID.
+  * Fix driver version string message.
+  * Unload of qla2xxx driver crashes the machine.
+  * 8.07.00.13. 
+  * Remove restriction on starting remote device discovery on port update.
+  * Allow nvram bit to enable FA-WWN.
+  * Allow nvram bit to enable D-PORT.
+  * Move mailbox failure messages to a default debug level.
+  * 8.07.00.12.xx.y-k
+  * Correction to FA-WWN for un-acquiring portname.
+  * Add scatter/gather table size module parameter.
+  * Add ql2xasynclogin module parameter. 
 
-2. Changes
 
-The following changes have been made to the Fibre Channel Target Mode
-Adapter Driver Update based for SCST with Trunk ID 5543. 
+* Initial release 8.07.00.11.Trunk-SCST.13-k
 
-	git-svn-id: http://svn.code.sf.net/p/scst/svn/trunk@5543
-	  d57e44dd-8a1f-0410-8b47-8ef2f437770f
+    Refer to "Known Issues" for caveat.
 
 
-Hardware Support
 
-N/A
+2. Additional Notes.
 
-OS Support
+The Current Source revision have been Engineering tested with the following
+configuration
 
-N/A
+OS Tested:
+    RHEL 7.0 RC1, RHEL 6.4, SLES 11SP1.
 
-Software/Driver
+HW/FW Tested:
+    QLE2680/QLE2682/QLE2764/ISP27XX: 156.5.0 (not officially released)
+    QLE8362/ISP26xx: 7.4.0
 
- * ISP83xx(16G FC/10G FCoE), ISP25xx(8G FC)
 
- * Enhancements to support ISP83xx (Limited support).
+SCST Source Revision ID Tested: r5619
 
-    * Driver features supported
-        * Port device discovery
-        * LUN discovery
-        * I/O
+    # svn log  | more
+    ------------------------------------------------------------------------
+    r5619 | bvassche | 2014-06-19 22:56:36 -0700 (Thu, 19 Jun 2014) | 1 line
 
-    * Driver features not supported
-        * Beacon support
-        * Loopback
-        * T10 DIX/DIF
-        * SFP read/write
-        * Multi-Queue
-        * Boot from SAN
-        * FC-Tape
-        * SLES10.3 driver:
-            * Fix not to MPI reset on ISP83xx is not included.
 
- * Implemeted beacon on/off for ISP82xx.
+    Use this cmd to clone the source level.
+    # svn checkout http://svn.code.sf.net/p/scst/svn/trunk@5619
 
- * Provide method for updating I2C attached VPD.
 
- * Resync with latest ISP24xx/25xx firmware (5.06.05).
 
-Industry Standards Compliance
-
-N/A
-
-3. Bug Fixes
-
-N/A
-
-4. Known Issues
+3. Known Issues
     
 * Extended Login support:
     - This FW feature is currently implemented in Hilda base adapter(ISP83xx/
@@ -89,35 +91,21 @@ N/A
 * Laser Control:
     - This feature applies to FC link only (not FCoE)    
     - It works for 8G/ISP25xx and 16G/ISP2031 adapter.
+    - not implemented for 32G/16G/ISP27xx
+
+* Driver features not supported
+    - Beacon support
+    - Loopback
+    - T10 DIX/DIF
+    - SFP read/write
+    - Multi-Queue
+    - Boot from SAN
+    - FC-Tape
+    - SLES10.3 driver:
 
 
 
-5. History
-
-* Initial release 8.07.00.11.Trunk-SCST.13-k
-
-    Refer to "Known Issues" for caveat.
-
-
-
-6. Additional Information
-
-
-
-7. Trademarks
-
-Accelera, Accelerating Cluster Performance, FastFabric, InfiniCon
-Systems, InfiniNIC, InfiniPath, InfiniView, Intelligent NIC,
-Networking University, NetXen, QLA, QLogic, the QLogic logo,
-ReadyPath, SANdoctor, SANsurfer, and SilverStorm are registered
-trademarks of QLogic Corporation. To the extent a name or logo does
-not appear on this list does not constitute a waiver of any and all
-intellectual property rights that QLogic Corporation or its
-subsidiaries has established in any of its product, feature, or
-service names or logos. All other brand and product names are
-trademarks or registered trademarks of their respective owners.
-
-8. Notices
+3. Notices
 
 Information furnished in this document is believed to be accurate and
 reliable. However, QLogic Corporation assumes no responsibility for
@@ -129,27 +117,28 @@ these products are only for illustrative purposes. QLogic Corporation
 makes no representation nor warranty that such applications are
 suitable for the specified use without further testing or
 modification. QLogic Corporation assumes no responsibility for any
-errors that may appear in this document.
+errors that may appear in this document. 
+
 
 
 9. Contacting Support
 
-Please feel free to contact your QLogic approved reseller or QLogic
-Technical Support at any phase of integration for assistance. QLogic
-Technical Support can be reached by the following methods:
+   For further assisance, contact QLogic Technical Support at:
+   http://support.qlogic.com
 
- Web: http://support.qlogic.com
- Email: support@qlogic.com
 
-(c) Copyright 2012. All rights reserved worldwide. QLogic, the QLogic
+Trademarks
+
+Accelera, Accelerating Cluster Performance, InfiniCon Systems,
+InfiniNIC, InfiniPath, InfiniView, QLA, QLogic, the QLogic logo,
+ReadyPath, SANdoctor, SANsurfer, and SilverStorm are registered
+trademarks of QLogic Corporation. All other brand and product names
+are trademarks or registered trademarks of their respective owners.
+
+
+(c) Copyright 2014. All rights reserved worldwide. QLogic, the QLogic
 logo, and the Powered by QLogic logo are registered trademarks of
 QLogic Corporation. All other brand and product names are trademarks
 or registered trademarks of their respective owners.
+ 
 
-Information furnished in this document is believed to be accurate and
-reliable. However, QLogic Corporation assumes no responsibility for
-its use, nor for any infringements of patents or other rights of
-third parties which may result from its use. QLogic Corporation
-reserves the right to change product specifications at any time
-without notice. Applications described in this document for any of
-these products are only for illustrative purposes. QLogic Corporation

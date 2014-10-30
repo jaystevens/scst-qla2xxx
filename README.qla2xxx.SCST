@@ -1,133 +1,176 @@
 
-    Fibre Channel Adapter Target Mode Driver
-            Update for SCST Trunk
+		QLogic Driver Readme File
+		QLogic Corporation
+		All rights reserved
 
-			        Readme
+Table of Contents 
 
-			 QLogic Corporation
-			 All rights reserved
+1. Package contents
+2. Supported Adapters/Controller
+3. Supported Operating System
+4. Installing the Driver
+5. Additional Notes
+6. Contacting Support
+
+1. Package Contents
+
+  * scst-qla2xxx-x.xx.xx.xx-Trunk-SCST.x.tgz - Compressed package that
+    contains the QLogic drivers Linux Kernel 2.6.x and 3.x.x. 
+
+  * scst-svn-rXXXX.tgz - Compressed package that contains a snapshot of
+    SCST source code that QLogic have tested at revision "rXXXX".
+
+    NOTE: xx represents the driver package version number.
 
 
-Table of Contents
+2. Supported Adapters/Controller
 
-1. Source Contents
-2. OS Support
-3. Supported Features
-4. Preparing for building SCST & Qlogic driver on RHEL 7.0
-   4.1 Install RHEL 7.0
-   4.2 Download QLogic Source and SCST source
-5. Building, installing, configuring and loading SCST & Qlogic driver
-   5.1 Building & installing SCST & driver modules
-   5.2 Configuring targets in scst.conf file
-   5.3 Loading SCST & QLogic driver modules
-   5.4 Manually load the driver for Linux Using insmod or modprobe.
-   5.5 Automatically load the driver by rebuilding the RAM disk to
-       include the driver.
-6. Driver System Parameters
-   6.1 SCST specific driver parameters
-7. Additional Notes
-   7.2 Firmware Installation
-   7.3 Dynamically Modifying SCSI Blacklist Entries
-8. Tunables
-   8.1 Queue rate monitoring
-9. Diagnostics
-   9.1 General diagnostic script
-   9.2 Performance diagnostic script
-10. Contacting Support
+2500/2600/2700 Series Fibre Channel Adapters.
+8300 Series Converged Network Adapters
 
-1. Source Contents
 
-This readme is part of the following respository 
-"git://git.qlogic.com/scst-qla2xxx.git".
-
-The content of this repository is a QLogic's provided SCST driver
-development kit.  It contains QLogic's Initiator(qla2xxx_scst.ko)
-and Target Mode(qla2x00t.ko) device drivers source.  
-
-These drivers are part of the larger SCST Target Mode infrastructure.
-These drivers provide FC & FCoE fabric connection to SCST core.
-
-For additional info on SCST Target Mode, refer to the following URLs:
-
-SCST Home page: http://scst.sourceforge.net/
-SCST Source page: http://sourceforge.net/p/scst/svn/HEAD/tree/
-
-NOTE: There are 3 repositories of Qlogic drivers that support Target Mode:
-
-      1) Qlogic maintained repository (This one. git://git.qlogic.com/scst-qla2xxx.git).
-	This repository will have the latest fix going forward in
-	supporting SCST Target Mode.  This version will have patches
-	that are part of the upstream kernel (https://www.kernel.org/)
-	fix submission.
-
-      2) SCST Community repository (http://sourceforge.net/p/scst/svn/HEAD/tree/).
-	SCST Community repository carries an older version of Qlogic driver.
-	It does not have latest hardware support.  It is not maintain by Qlogic.
-	The maintainer of SCST (Vlad) had agreed to obsolete this version in favor
-	of option 1.
-
-      3) Upstreams Kernel repository (https://www.kernel.org/). 
-	Upstreams Kernel also carry a copy of Qlogic Target mode driver.  That 
-	version is not compatible with SCST.  That version is part of the TCM
-	Target Mode infrastructure.  It is not recommended to mix that source
-	with this version you've just downloaded.
-
-2. OS Support
+3. Supported operating systems
 
 The Fibre Channel Adapter Target Mode Driver for Linux is compatible with the
 following OS 
 
  * Red Hat Enterprise Linux 7.0 (32-bit, 64-bit) on Intel x86, Intel 64, AMD64
-
-2.1 Tested setup
-
- * Red Hat Enterprise Linux 7.0 (initiators, targets)
- * Qlogic: 8G/QLE25xx, 16G FC/10G FCoE/QLE83xx
- * HP Proliant DL380 G7/G8
-
-3. Supported Features
-
- * direct attach loop, point-to-point, and fabric topologies
- * Initiator and Target mode
- * Fibre Channel tape
- * MSI-X interrupts
- * Support for sysfs interface
+ * Red Hat Enterprise Linux 6.3 (32-bit, 64-bit) on Intel x86, Intel 64, AMD64
+ * SuSe Linux Enterprise Server 11 (32-bit, 64-bit) on Intel x86, Intel 64, AMD64
 
 
-4. Preparing for building SCST & Qlogic driver on RHEL 7.0
+4. Installing the driver
 
-This section provides modified procedures from
-http://scst.sourceforge.net/qla2x00t-howto.html on how to retrieve and
-configure SCST for the latest QLogic Linux driver offering for target mode:
+ This section provides procedures for deploying the driver on various
+ Linux versions, including the following:
 
- * 4.1 Install RHEL 7.0
- * 4.2 Download QLogic Source and SCST source
+ * 4.1 Prepare the system for RHEL 6.x/7.x Linux
+ * 4.2 Prepare the system for SLES 11.x Linux
+ * 4.3 Prepare QLogic & SCST Sources.
+ * 4.4 Build and install drivers.
+ * 4.5 Load the drivers.
+ * 4.6 Configuring Target
 
-4.1 Install RHEL 7.0
-4.1.1 Perform normal installation of RHEL 7.0
+4.1 Prepare the system for RHEL 6.x/7.x Linux
 
-4.1.2 Install additional binary packages for driver compilation.
+a. Install additional RPMs
+   Use the following command to install addtional RPM packages required 
+   for driver compilation
 
-    # yum install kernel-devel kernel-tools kernel-headers git
+ # yum install kernel-devel kernel-headers git subversion
+
+b. Inbox driver need to be unloaded
+
+ # rmmod qla2xxx
+
+c. Edit the /etc/modprobe.d/unsupported_modules file to make the 
+   following change:
+
+   allow_unsupported_modules 1  (replace 0 by 1)
+
+d. optional: to disable future load of qla2xxx after reboot
 
 
-4.2 Download QLogic Source and SCST source.
-4.2.1. Download Qlogic source.
+   i. edit /etc/modprobe.d/blacklist.conf with the following line
+   blacklist qla2xxx
 
+
+   ii. synchronize config to ramdisk
+   # cp initrd-[kernel version].img initrd-[kernel version].img.bak
+   # mkinitrd
+
+
+4.2 Prepare the system for SLES 11.x Linux
+
+a. Install additional RPMs 
+   Use the following command to install addtional RPM packages required 
+   for driver compilation
+
+ # yast -i linux-kernel-headers kernel-default-devel git subversion
+
+b. Inbox driver need to be unloaded
+ # rmmod qla2xxx
+
+
+c. optional: to disable future load of qla2xxx after reboot
+
+   i. edit /etc/modprobe.d/blacklist with the following line
+
+       blacklist qla2xxx
+
+   ii. synchronize config to ramdisk
+       # cp initrd-[kernel version].img initrd-[kernel version].img.bak
+       # mkinitrd
+
+
+4.3 Prepare SCSt & QLogic Sources.
+
+a. Unpack Sources from the tarball
+   Refer to Additional Notes section for additional information on Source
+   repository.
+
+   # cd /root
+   # tar -xvzf scst-qla2xxx-<version>.tgz
+   # 
+   # tar -xvzf scst-svn-rXXXX.tgz
+
+
+
+b. Optional: Download latest source.
+
+   i. Download Qlogic source.
+
+   # cd /root
+   # git clone git://git.qlogic.com/scst-qla2xxx.git scst-qla2xxx
+
+
+   ii. Download SCST source  - SVN method.
+       SVN is a source control ultility used by the SCST upstream community to 
+       manage patches & features.  This tool can be used to clone a copy of the
+       source. The RPM package for this utility is "subversion-<rev>.rpm"
+
+    Clone "trunk" branch/latest code
     # cd /root
-    # git clone git://git.qlogic.com/scst-qla2xxx.git 
+    # svn checkout  http://svn.code.sf.net/p/scst/svn/trunk
+    # mv trunk scst_src
 
-4.2.2 Download SCST Sources and create local source branch "mytrunk".
+    To pull latest fixes from remote "trunk" if local branch is behinhd
+    # cd scst_src
+    # svn update
 
+
+    Alternate: clone all branches.
+    # cd /root
+    # svn checkout  http://svn.code.sf.net/p/scst/svn/
+
+    Trunk branch is at /root/svn/trunk. Other branches/Older release of SCST
+    are at /root/svn/branches/<older version>
+    # mv svn/trunk scst_src
+
+    /root/scst_src directory now contains a snapshot of the trunk.
+
+
+    iii. Git-svn method
+    Git is another tool for source control use by the Linux Community.  With
+    additional plug-in "subversion perl module"/library. Git can access and
+    intepret SVN data base used by SCST community.
+
+
+    Create local source branch "mytrunk".
     # cd /root
     # mkdir scst_src
     # cd scst_src
+
+    Initialize git repository and download sources.
     # git svn init -t tags -b branches -T trunk http://svn.code.sf.net/p/scst/svn
     # git svn fetch
     # git checkout -b mytrunk remotes/origin/trunk
 
-    [optional] pull latest fixes from remote "trunk" if "mytrunk" is behind
+
+    Optional: pull latest fixes from remote "trunk" if "mytrunk" is behind
     # git svn rebase
+
+    /root/scst_src directory now contains a snapshot of the trunk.
 
 CAVEAT: It is assume reader of this material is familiar with git command.
       "git svn" feature is not normally available as part of OS installation.
@@ -139,20 +182,10 @@ CAVEAT: It is assume reader of this material is familiar with git command.
       subversion-perl-<version>.rpm
 
 
-5. Building, installing, configuring and loading SCST & Qlogic driver
-This section provides procedures for building the driver on various 
-Linux versions, including the following:
-  * 5.1 Building & installing SCST & driver modules
-  * 5.2 Configuring targets in scst.conf file
-  * 5.3 Loading SCST & QLogic driver modules
-  * 5.4 Manually load the driver for Linux Using insmod or modprobe.
-  * 5.5 Automatically load the driver by rebuilding the RAM disk to
-        include the driver.
 
-5.1 Building & installing SCST & QLogic driver modules
-This section describes how to build and install driver modules
+4.4 Build and install drivers.
 
-    1. Build SCST and install SCST drivers, include files
+    a. Build SCST and install SCST drivers, include files
        (/usr/local/include/scst/*), and scstadmin utility.
 
        # cd /root/scst_src/
@@ -160,22 +193,22 @@ This section describes how to build and install driver modules
        # make scst_install
        # make scstadm_install 
 
-    2. Check to see if SCST driver have been installed.
+    b. Check to see if SCST driver have been installed.
        # ls /lib/modules/`uname -r`/extra/scst.ko
        # ls /lib/modules/`uname -r`/extra/dev_handlers/scst*
 
-    3. Check to see if SCST include files have been installed.
+    c. Check to see if SCST include files have been installed.
        # ls /usr/local/include/scst/
     
-    4. Build and install Qlogic drivers.
+    d. Build and install Qlogic drivers.
        NOTE: The steps above must succeed before building QLogic drivers.
 	Qlogic driver has dependency on SCST's Include files in 
 	/usr/local/include/scst/
 
-       # cd /root/scst-qla2xxx
+       # cd /root/scst-qla2xxx*
        # make all
     
-    3. Verify that compilation and installation succeeded:
+    e. Verify that compilation and installation succeeded:
        # ls -l /lib/modules/`uname -r`/extra/qla2xxx_scst*
 
     The kernel modules have been installed in
@@ -206,16 +239,12 @@ This section describes how to build and install driver modules
         scst_user - user space device handler.
     
     You can insert any of these kernel modules with the 'modprobe' program.
-     
-5.2. Manually load the driver for Linux Using insmod or modprobe.
 
-    * Inbox driver need to be unloaded.
-       # rmmod qla2xxx
 
-    * For SLES 11 only, edit the /etc/modprobe.d/unsupported_modules
-      file to make the following change:
 
-       allow_unsupported_modules 1  (replace 0 by 1)
+4.5 Load the drivers.
+
+a. Manually load the driver for Linux Using insmod or modprobe.
 
     * To directly load the driver from the local build directories,
       issue the following insmod commands in order:
@@ -241,7 +270,8 @@ This section describes how to build and install driver modules
 
        # modprobe -r qla2xxx_scst
 
-5.3. Automatically load the driver by rebuilding the RAM disk to
+
+b. [Optional] Automatically load the driver by rebuilding the RAM disk to
     include the driver.
 
     * Create a copy of the current RAMDISK by issuing the following
@@ -254,12 +284,11 @@ This section describes how to build and install driver modules
 
        # mkinitrd
 
-      NOTE: Depending on the server hardware, the RAMDISK file name
-            may be different.
 
-    * To load the driver, reboot the host.
+4.6 Configuring Target
 
-5.4. Configuring targets and luns in scst.conf file
+a. Configure targets and luns using /etc/scst.conf file.
+
     Modify TARGET WWN below to match with the WWN of the configured initiator
     port. Refer to http://scst.sourceforge.net/ for more information.
 
@@ -278,17 +307,79 @@ This section describes how to build and install driver modules
         }
     }
     --8<--
+
     See scstadmin(1) for additional information on administration and
     configuration of SCST.
 
-5.3 Loading SCST & QLogic driver modules
-    Start SCST & QLogic driver by running:
+
+b. Start SCST & QLogic driver by running:
 
     # /etc/init.d/scst start
 
 
 
-6. Driver System Parameters
+5.  Additional Notes
+    5.1  Repository information
+    5.2  Tested setup
+    5.3  Supported Features
+    5.4  Driver System Parameters
+    5.5  SCST specific driver parameters
+    5.6  Dynamically Modifying SCSI Blacklist Entries
+    5.7  Tunables
+
+5.1  Repository information
+
+This readme is part of the following respository 
+"git://git.qlogic.com/scst-qla2xxx.git".
+
+The content of this repository is a QLogic's provided SCST driver
+development kit.  It contains QLogic's Initiator(qla2xxx_scst.ko)
+and Target Mode(qla2x00tgt.ko) device drivers source.  
+
+These drivers are part of the larger SCST Target Mode infrastructure.
+These drivers provide FC & FCoE fabric connection to SCST core.
+
+For additional info on SCST Target Mode, refer to the following URLs:
+
+SCST Home page: http://scst.sourceforge.net/
+SCST Source page: http://sourceforge.net/p/scst/svn/HEAD/tree/
+
+NOTE: There are 3 repositories of Qlogic drivers that support Target Mode:
+
+      1) Qlogic maintained repository (This one. git://git.qlogic.com/scst-qla2xxx.git).
+	This repository will have the latest fix going forward in
+	supporting SCST Target Mode.  This version will have patches
+	that are part of the upstream kernel (https://www.kernel.org/)
+	fix submission.
+
+      2) SCST Community repository (http://sourceforge.net/p/scst/svn/HEAD/tree/).
+	SCST Community repository carries an older version of Qlogic driver.
+	It does not have latest hardware support.  It is not maintain by Qlogic.
+	The maintainer of SCST (Vlad) had agreed to obsolete this version in favor
+	of option 1.
+
+      3) Upstreams Kernel repository (https://www.kernel.org/). 
+	Upstreams Kernel also carry a copy of Qlogic Target mode driver.  That 
+	version is not compatible with SCST.  That version is part of the TCM
+	Target Mode infrastructure.  It is not recommended to mix that source
+	with this version you've just downloaded.
+
+5.2 Tested setup
+
+ * Red Hat Enterprise Linux 7.0 (initiators, targets)
+ * SuSe Linux Enterprise Linux 11 SP1 (initiators, targets)
+ * Qlogic: 8G/QLE25xx, 16G FC/10G FCoE/QLE83xx, 32G FC/16G FC/QLE2764/QLE268X
+ * HP Proliant DL380 G7/G8
+
+5.3 Supported Features
+
+ * direct attach loop, point-to-point, and fabric topologies
+ * Initiator and Target mode
+ * Fibre Channel tape
+ * MSI-X interrupts
+ * Support for sysfs interface
+
+5.4  Driver System Parameters
 
 The driver gets its parameters when specified with the insmod command.
 For example:
@@ -350,7 +441,7 @@ command:
 
  # /sbin/modinfo qla2xxx_scst
 
-6.1 SCST specific driver parameters
+5.5 SCST specific driver parameters
 
  * qla_q_rate - Turns on monitoring of queue (atio, request, response)
    rates (requests in / out). For more information, see 8.1.
@@ -358,28 +449,9 @@ command:
  * qla_q_rate_limit - This is used in conjunction with qla_q_rate.C
    For more information, see 8.1.
 
-7. Additional Notes
 
-The following sections contain additional information:
 
- * 7.1 Firmware Installation
- * 7.2 Dynamically Modifying SCSI Blacklist Entries
-
-7.1 Firmware Installation
-
-To install a firmware RPM on a:
-
-1. Save original firmwares in /lib/firmware:
-
-$ cd /
-$ cp /lib/firmware/ql2400_fw.bin /lib/firmware/ql2400_fw.bin.orig
-$ cp /lib/firmware/ql2500_fw.bin /lib/firmware/ql2500_fw.bin.orig
-
-2. Extract firmware:
-
-$ rpm -Uvh --force qlogic-firmware-x.yy.zz.noarch.rpm
-
-7.3 Dynamically Modifying SCSI Blacklist Entries
+5.6  Dynamically Modifying SCSI Blacklist Entries
 
 On 2.6.x kernels, you can dynamically change the SCSI blacklist,
 either by writing to a /proc entry or using the scsi_mod module
@@ -438,8 +510,9 @@ To enable persistence across reboots:
 
  3. Rebuild the RAMDISK (refer to section 4.3, step 4).
 
-8. Tunables
-8.1 Queue rate monitoring
+
+5.7. Tunables
+a. Queue rate monitoring
     qla2xxx_scst driver internal queue rates can be monitored by turning
     on the driver parameter qla_q_rate.
 
@@ -470,7 +543,7 @@ To enable persistence across reboots:
     To reset q rate history:
         # echo 0 > /sys/kernel/debug/qla2xxx/qla2xxx_<host#>/q_rate_hist
 
-8.2 Loop Back support
+b. Loop Back support
     qla2x00t driver provides loopback capability to measure firmware
     performance with minimal driver interaction specific to read/write
     of small block 4k and less.
@@ -493,24 +566,28 @@ To enable persistence across reboots:
      echo 1 > /sys/module/qla2x00tgt/parameters/fcp_rsp_wr
 
 
-9. Diagnostics
-9.1 General diagnostic script
+5.8  Diagnostics
+
+a. General diagnostic script
    A general diagnostic script is included with the source and can be found
    here:
-        /root/qla2xx/extras/qdiag.sh
+        /root/scst-qla2xx/drivers/scsi/qla2xxx/extras/qdiag.sh
    The script collects general system diagnostic information. Please provide
    the output file generated by the script when reporting issues.
 
-9.2 Performance diagnostic script
+b. Performance diagnostic script
    A performance diagnostic interactive script is included with the source
    and can be found here:
-        /root/qla2xx/extras/qscst.sh
+        /root/scst-qla2xx/drivers/scsi/qla2xxx/extras/qscst.sh
    The script interactively allows user to run performance test and gathers
    performance/system statistics. Please provide the output file generated
    by the script when reporting performance related issues. There is no
    need to run qdiag.sh along with this, this script runs it internally.
 
-10. Contacting Support
+
+
+
+6. Contacting Support
 
 Please feel free to contact your QLogic approved reseller or QLogic 
 Technical Support at any phase of integration for assistance. QLogic
