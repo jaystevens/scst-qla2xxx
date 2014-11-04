@@ -2765,6 +2765,11 @@ qla2x00_get_host_speed(struct Scsi_Host *shost)
 	case PORT_SPEED_16GB:
 		speed = FC_PORTSPEED_16GBIT;
 		break;
+	case PORT_SPEED_32GB:
+#if LINUX_VERSION_CODE > KERNEL_VERSION(3, 14, 0)
+		speed = FC_PORTSPEED_32GBIT;
+#endif
+		break;
 	}
 	fc_host_speed(shost) = speed;
 }
