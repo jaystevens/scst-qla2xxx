@@ -224,9 +224,32 @@ struct q2t_sess {
 	fc_port_t *qla_fcport;
 };
 
+#define MAX_QFULL_CMDS_ALLOC	8192
+#define Q_FULL_THRESH_HOLD_PERCENT 100
+#define Q_FULL_THRESH_HOLD(ha) \
+	((ha->fw_xcb_count/100)* Q_FULL_THRESH_HOLD_PERCENT)
+
+#define LEAK_EXCHG_THRESH_HOLD_PERCENT 75	/* 75 percent */
+
+typedef enum {
+	QFULL_NOOP=0,		/* place holder */
+	QFULL_SCSI_BUSY,
+	QFULL_TERM_EXCHG,
+	QFULL_TSK_MGMT,
+	QFULL_ABTS,
+} qfull_cmd_type_t;
+
+struct qfull_arg {
+	uint16_t status; 		/* scsi status/respond_code/ */
+	uint16_t loop_id;
+	uint32_t resp_code;
+	uint32_t ids_reversed:1;
+};
+
+
 struct q2t_cmd {
 	struct q2t_sess *sess;
-	int state;
+	uint32_t state;
 
 	unsigned int conf_compl_supported:1;/* to save extra sess dereferences */
 	unsigned int sg_mapped:1;
@@ -234,12 +257,13 @@ struct q2t_cmd {
 	unsigned int aborted:1; /* Needed in case of SRR */
 	unsigned int write_data_transferred:1;
 	unsigned int cmd_sent_to_fw:1;
-	unsigned int q_full:1;
-	unsigned int term_exchg:1;
+	unsigned int q_full_ids_reversed:1;
+
 #ifdef QLT_LOOP_BACK
 	unsigned int qlb_io:1;
 #endif /* QLT_LOOP_BACK */
 
+	qfull_cmd_type_t qftype;
 	cmd_flags_t cmd_flags;
 	uint64_t alloc_jiff;
 	uint64_t free_jiff;

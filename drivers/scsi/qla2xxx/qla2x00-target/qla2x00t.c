@@ -176,6 +176,9 @@ static int __q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 static int __q2x_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 			atio_entry_t *atio);
 static inline void q2t_free_cmd (struct q2t_cmd *cmd);
+static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
+	atio7_entry_t *atio, struct qfull_arg *arg, qfull_cmd_type_t type);
+
 #ifndef CONFIG_SCST_PROC
 
 /** SYSFS **/
@@ -2032,32 +2035,30 @@ static void q2x_send_notify_ack(scsi_qla_host_t *vha, notify_entry_t *iocb,
 
 out:
 	TRACE_EXIT();
-	return;
 }
+
 
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
  */
-static void q24_send_abts_resp(scsi_qla_host_t *vha,
+static int __q24_send_abts_resp(scsi_qla_host_t *vha,
 	const abts24_recv_entry_t *abts, uint32_t status, bool ids_reversed)
 {
 	abts24_resp_entry_t *resp;
 	uint32_t f_ctl;
 	uint8_t *p;
+	int rc = 0;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("Sending task mgmt ABTS response (vha=%p, atio=%p, "
 		"status=%x", vha, abts, status);
 
-	/* Send marker if required */
-	if (q2t_issue_marker(vha, 1) != QLA_SUCCESS)
-		goto out;
-
 	resp = (abts24_resp_entry_t *)q2t_req_pkt(vha);
 	if (resp == NULL) {
 		PRINT_ERROR("qla2x00t(%ld): %s failed: unable to allocate "
 			"request packet", vha->host_no, __func__);
+		rc = -ENOMEM;
 		goto out;
 	}
 
@@ -2110,6 +2111,34 @@ static void q24_send_abts_resp(scsi_qla_host_t *vha,
 	vha->vha_tgt.tgt->abts_resp_expected++;
 
 	q2t_exec_queue(vha);
+
+out:
+	TRACE_EXIT();
+	return rc;
+}
+
+static void q24_send_abts_resp(scsi_qla_host_t *vha,
+	const abts24_recv_entry_t *abts, uint32_t status, bool ids_reversed)
+{
+	int rc;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("Sending task mgmt ABTS response (vha=%p, atio=%p, "
+		"status=%x", vha, abts, status);
+
+	/* Send marker if required */
+	if (q2t_issue_marker(vha, 1) != QLA_SUCCESS)
+		goto out;
+
+	rc = __q24_send_abts_resp(vha, abts, status, ids_reversed);
+	if (rc) {
+		struct qfull_arg a= {0};
+		a.status = status;
+		a.ids_reversed = ids_reversed ? 1 : 0;
+		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)abts, &a,
+					QFULL_ABTS);
+	}
 
 out:
 	TRACE_EXIT();
@@ -2166,8 +2195,8 @@ static void q24_retry_term_exchange(scsi_qla_host_t *vha,
 
 out:
 	TRACE_EXIT();
-	return;
 }
+
 
 /* ha->hardware_lock supposed to be held on entry */
 static int __q24_handle_abts(scsi_qla_host_t *vha, abts24_recv_entry_t *abts,
@@ -2273,32 +2302,29 @@ out_err:
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
  */
-static void q24_send_task_mgmt_ctio(scsi_qla_host_t *vha,
-	struct q2t_mgmt_cmd *mcmd, uint32_t resp_code)
+static int __q24_send_task_mgmt_ctio(scsi_qla_host_t *vha,
+	const atio7_entry_t *atio, uint32_t resp_code, uint16_t loop_id)
 {
-	const atio7_entry_t *atio = &mcmd->orig_iocb.atio7;
 	ctio7_status1_entry_t *ctio;
+	int rc = 0;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("Sending task mgmt CTIO7 (vha=%p, atio=%p, resp_code=%x",
 		  vha, atio, resp_code);
 
-	/* Send marker if required */
-	if (q2t_issue_marker(vha, 1) != QLA_SUCCESS)
-		goto out;
-
 	ctio = (ctio7_status1_entry_t *)q2t_req_pkt(vha);
 	if (ctio == NULL) {
 		PRINT_ERROR("qla2x00t(%ld): %s failed: unable to allocate "
 			"request packet", vha->host_no, __func__);
+		rc = -ENOMEM;
 		goto out;
 	}
 
 	ctio->common.entry_type = CTIO_TYPE7;
 	ctio->common.entry_count = 1;
 	ctio->common.handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
-	ctio->common.nport_handle = mcmd->sess->loop_id;
+	ctio->common.nport_handle = cpu_to_le16(loop_id);
 	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = vha->vp_idx;
 	ctio->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
@@ -2319,8 +2345,39 @@ static void q24_send_task_mgmt_ctio(scsi_qla_host_t *vha,
 
 out:
 	TRACE_EXIT();
+	return rc;
+}
+
+static void q24_send_task_mgmt_ctio(scsi_qla_host_t *vha,
+	struct q2t_mgmt_cmd *mcmd, uint32_t resp_code)
+{
+	atio7_entry_t *atio = &mcmd->orig_iocb.atio7;
+	int rc;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("Sending task mgmt CTIO7 (vha=%p, atio=%p, resp_code=%x",
+		  vha, atio, resp_code);
+
+	/* Send marker if required */
+	if (q2t_issue_marker(vha, 1) != QLA_SUCCESS)
+		goto out;
+
+	rc = __q24_send_task_mgmt_ctio(vha, atio, resp_code,
+				mcmd->sess->loop_id);
+
+	if (rc) {
+		/* alloc a temp cmd to re-try the task mgmt ctio. */
+		struct qfull_arg a= {0};
+		a.resp_code = resp_code;
+		a.loop_id = mcmd->sess->loop_id;
+		q2t_alloc_qfull_cmd(vha, atio, &a, QFULL_TSK_MGMT);
+	}
+out:
+	TRACE_EXIT();
 	return;
 }
+
 
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reacquire
@@ -3597,7 +3654,7 @@ void q2t_chk_exch_leak_thresh_hold(struct scsi_qla_host *vha)
  * out previously.
  */
 static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
-	atio7_entry_t *atio, uint16_t status, int qfull)
+	atio7_entry_t *atio, struct qfull_arg *arg, qfull_cmd_type_t type)
 {
 	struct q2t_tgt *tgt = vha->vha_tgt.tgt;
 	struct q2t_cmd *cmd;
@@ -3636,7 +3693,7 @@ static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
 				vha->hw->ha_tgt.num_qfull_cmds_dropped;
 
 		q2t_chk_exch_leak_thresh_hold(vha);
-		return ;
+		return;
 	}
 
 	INIT_LIST_HEAD(&cmd->cmd_list);
@@ -3645,12 +3702,25 @@ static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
 	cmd->tgt = vha->vha_tgt.tgt;
 	cmd->reset_count = vha->hw->chip_reset;
 
-	if (qfull) {
-		cmd->q_full = 1;
-		/* NOTE: borrowing the state field to carry the status */
-		cmd->state = status;
-	} else
-		cmd->term_exchg = 1;
+	/* NOTE: borrowing the state field to carry the status/resp_code */
+	switch (type) {
+	case QFULL_SCSI_BUSY:
+		cmd->state = arg->status;
+		break;
+	case QFULL_TSK_MGMT:
+		cmd->state = arg->resp_code;
+		cmd->loop_id = arg->loop_id;
+		break;
+	case QFULL_ABTS:
+		cmd->state = arg->status;
+		cmd->q_full_ids_reversed = arg->ids_reversed;
+		break;
+
+	case QFULL_TERM_EXCHG:
+	default:
+		break;
+	}
+	cmd->qftype = type;
 
 	list_add_tail(&cmd->cmd_list, &vha->hw->ha_tgt.q_full_list);
 
@@ -3685,7 +3755,8 @@ int q2t_free_qfull_cmds(struct scsi_qla_host *vha)
 
 	list_for_each_entry_safe(cmd, tcmd, &ha->ha_tgt.q_full_list, cmd_list) {
 
-		if (cmd->q_full) {
+		switch (cmd->qftype) {
+		case QFULL_SCSI_BUSY:
 			/* cmd->state is a borrowed field to hold status */
 			if (IS_FWI2_CAPABLE(ha))
 				rc = __q24_send_busy(vha, &cmd->atio.atio7,
@@ -3693,28 +3764,38 @@ int q2t_free_qfull_cmds(struct scsi_qla_host *vha)
 			else
 				rc = __q2x_send_busy(vha,
 					(atio_entry_t*)&cmd->atio.atio7);
+			break;
 
-		} else if (cmd->term_exchg) {
+		case QFULL_TERM_EXCHG:
 			if (IS_FWI2_CAPABLE(ha))
 				rc = __q24_send_term_exchange(vha, NULL,
 					&cmd->atio.atio7);
 			else
 				rc= __q2x_send_term_exchange(vha, NULL,
 					(atio_entry_t*)&cmd->atio.atio7);
+			break;
+
+		case QFULL_TSK_MGMT:
+			/* cmd->state is a borrowed field to hold resp_code */
+			rc= __q24_send_task_mgmt_ctio(vha, &cmd->atio.atio7,
+						cmd->state, cmd->loop_id);
+			break;
+
+		case QFULL_ABTS:
+			rc = __q24_send_abts_resp(vha,
+				(abts24_recv_entry_t*)&cmd->atio.atio7,
+				cmd->state, cmd->q_full_ids_reversed);
+			break;
+		default:
+			break;
 		}
 
 		if (rc == -ENOMEM)
 			break;
 
-		if (cmd->q_full)
-			TRACE_DBG( "%s: busy sent for ox_id[%04x]\n",
-				__func__, be16_to_cpu(cmd->atio.atio7.fcp_hdr.ox_id));
-		else if (cmd->term_exchg)
-			TRACE_DBG( "%s: Term exchg sent for ox_id[%04x]\n",
-				__func__, be16_to_cpu(cmd->atio.atio7.fcp_hdr.ox_id));
-		else
-			TRACE_DBG( "%s: Unexpected cmd in QFull list %p\n",
-				__func__, cmd);
+		TRACE_DBG( "%s: qfull cmd type[%d] sent for ox_id[%04x]\n",
+			__func__, cmd->qftype,
+			be16_to_cpu(cmd->atio.atio7.fcp_hdr.ox_id));
 
 		list_del(&cmd->cmd_list);
 		list_add_tail(&cmd->cmd_list, &free_list);
@@ -3832,10 +3913,10 @@ static void q2x_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 			do_tgt_cmd_done = 1;
 	}
 	
-	rc = __q2x_send_term_exchange(vha,cmd,atio);
+	rc = __q2x_send_term_exchange(vha, cmd, atio);
 	if (rc)
-		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, 0, 0);
-
+		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, NULL,
+				QFULL_TERM_EXCHG);
 
 	if (!ha_locked)
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -3935,7 +4016,8 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 
 	rc = __q24_send_term_exchange(vha,cmd,atio);
 	if (rc)
-		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, 0, 0);
+		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, NULL,
+				QFULL_TERM_EXCHG);
 
 
 	if (!ha_locked)
@@ -3982,7 +4064,7 @@ void q2t_init_term_exchange(struct scsi_qla_host *vha)
 
 static inline void q2t_free_cmd(struct q2t_cmd *cmd)
 {
-	if (!cmd->q_full && !cmd->term_exchg)
+	if (!cmd->qftype)
 		q2t_decr_num_pend_cmds(cmd->tgt->ha);
 
 	EXTRACHECKS_BUG_ON(cmd->sg_mapped);
@@ -6103,9 +6185,12 @@ static void q2x_send_busy(scsi_qla_host_t *vha, atio_entry_t *atio)
 	int rc =0;
 	rc = __q2x_send_busy(vha,atio);
 
-	if (rc)
+	if (rc) {
+		struct qfull_arg a= {0};
+		a.status = SAM_STAT_TASK_SET_FULL;
 		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, 
-				SAM_STAT_TASK_SET_FULL, 1);
+				&a, QFULL_SCSI_BUSY);
+	}
 	return;
 }
 
@@ -6180,9 +6265,12 @@ static void q24_send_busy(scsi_qla_host_t *vha, atio7_entry_t *atio,
 	int rc =0;
 	rc = __q24_send_busy(vha,atio,status);
 
-	if (rc)
-		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, 
-				SAM_STAT_TASK_SET_FULL, 1);
+	if (rc) {
+		struct qfull_arg a= {0};
+		a.status = SAM_STAT_TASK_SET_FULL;
+		q2t_alloc_qfull_cmd(vha, (atio7_entry_t *)atio, &a,
+				QFULL_SCSI_BUSY);
+	}
 	return;
 }
 

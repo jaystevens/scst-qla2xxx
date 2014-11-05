@@ -3081,13 +3081,6 @@ struct qlt_hw_data {
 
 };
 
-#define MAX_QFULL_CMDS_ALLOC	8192
-#define Q_FULL_THRESH_HOLD_PERCENT 100
-#define Q_FULL_THRESH_HOLD(ha) \
-	((ha->fw_xcb_count/100)* Q_FULL_THRESH_HOLD_PERCENT)
-
-#define LEAK_EXCHG_THRESH_HOLD_PERCENT 75	/* 75 percent */
-
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
 
