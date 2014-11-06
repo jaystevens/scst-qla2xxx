@@ -3092,7 +3092,7 @@ struct qlt_hw_data {
 /* more threads does not mean better performance.
  * Tweak this value to your liking.
  */
-#define DEFAULT_RSP_THREADS 1
+#define DEFAULT_RSP_THREADS 2
 struct qla_rsp_thread {
 	spinlock_t		rx_pendq_lock ____cacheline_aligned;
 	wait_queue_head_t	rx_pendq_waitQ;
