@@ -2789,7 +2789,14 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 		case ABTS_RECV_24XX:
 			/* ensure that the ATIO queue is empty */
+#ifdef QLA_ATIO_LOCK
+			spin_lock_irq(&ha->ha_tgt.atio_lock);
 			qla24xx_process_atio_queue(vha);
+			spin_unlock_irq(&ha->ha_tgt.atio_lock);
+#else
+			qla24xx_process_atio_queue(vha);
+#endif
+
 			/* go through */
 		case ABTS_RESP_24XX:
 		case CTIO_TYPE7:
@@ -3339,9 +3346,9 @@ out:
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 
-#ifdef QLA_ATIO_NOLOCK
+#ifdef QLA_ATIO_LOCK
 static irqreturn_t
-qla83xx_msix_atio_q_nolock(int irq, void *dev_id)
+qla83xx_msix_atio_q_lock(int irq, void *dev_id)
 {
 	struct rsp_que *rsp;
 	scsi_qla_host_t *vha;
@@ -3359,6 +3366,8 @@ qla83xx_msix_atio_q_nolock(int irq, void *dev_id)
 
 	if (!vha->flags.online)
 		return IRQ_HANDLED;
+
+	spin_lock_irq(&ha->ha_tgt.atio_lock);
 
 	ha_tgt = &vha->hw->ha_tgt;
 
@@ -3392,10 +3401,12 @@ qla83xx_msix_atio_q_nolock(int irq, void *dev_id)
 	WRT_REG_DWORD(ISP_ATIO_Q_OUT(vha), ha_tgt->atio_ring_index);
 	RD_REG_DWORD_RELAXED(ISP_ATIO_Q_OUT(vha));
 
+	spin_unlock_irq(&ha->ha_tgt.atio_lock);
+
 	return IRQ_HANDLED;
 }
 
-#else  /* QLA_ATIO_NOLOCK */
+#else  /* ! QLA_ATIO_LOCK */
 
 static irqreturn_t
 qla83xx_msix_atio_q(int irq, void *dev_id)
@@ -3417,7 +3428,7 @@ qla83xx_msix_atio_q(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
-#endif	/* QLA_ATIO_NOLOCK */
+#endif	/* QLA_ATIO_LOCK */
 
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
@@ -3490,6 +3501,19 @@ qla24xx_msix_default(int irq, void *dev_id)
 			qla24xx_process_response_queue(vha, rsp);
 			break;
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
+#ifdef QLA_ATIO_LOCK
+		case 0x1C: /* ATIO queue updated */
+			spin_lock_irq(&ha->ha_tgt.atio_lock);
+			qla24xx_process_atio_queue(vha);
+			spin_unlock_irq(&ha->ha_tgt.atio_lock);
+			break;
+		case 0x1D: /* ATIO and response queues updated */
+			spin_lock_irq(&ha->ha_tgt.atio_lock);
+			qla24xx_process_atio_queue(vha);
+			spin_unlock_irq(&ha->ha_tgt.atio_lock);
+			qla24xx_process_response_queue(vha, rsp);
+			break;
+#else
 		case 0x1C: /* ATIO queue updated */
 			qla24xx_process_atio_queue(vha);
 			break;
@@ -3497,6 +3521,7 @@ qla24xx_msix_default(int irq, void *dev_id)
 			qla24xx_process_atio_queue(vha);
 			qla24xx_process_response_queue(vha, rsp);
 			break;
+#endif
 #endif
 		default:
 			ql_dbg(ql_dbg_async, vha, 0x5051,
@@ -3539,11 +3564,11 @@ static struct qla_init_msix_entry qla83xx_msix_entries[3] = {
 	{ "qla2xxx (rsp_q)", qla24xx_msix_rsp_q },
 #endif	/* QLA_RSPQ_NOLOCK */
 
-#ifdef QLA_ATIO_NOLOCK
-	{ "qla2xxx (atio_q)", qla83xx_msix_atio_q_nolock },
+#ifdef QLA_ATIO_LOCK
+	{ "qla2xxx (atio_q)", qla83xx_msix_atio_q_lock },
 #else
 	{ "qla2xxx (atio_q)", qla83xx_msix_atio_q },
-#endif	/* QLA_ATIO_NOLOCK */
+#endif	/* QLA_ATIO_LOCK */
 };
 
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */

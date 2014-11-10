@@ -837,7 +837,7 @@ static int q2t_target_detect(struct scst_tgt_template *tgtt)
 #ifdef QLA_RSPQ_NOLOCK
 		.tgt_process_ctio = q2t_process_ctio,
 #endif
-#ifdef QLA_ATIO_NOLOCK
+#ifdef QLA_ATIO_LOCK
 		.tgt83_atio_pkt = q83_atio_pkt,
 #endif
 		.tgt_get_sess_login_state = q2t_get_sess_login_state,
@@ -4004,7 +4004,6 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 	atio7_entry_t *atio, int ha_locked)
 {
 	unsigned long flags = 0; /* to stop compiler's warning */
-	int do_tgt_cmd_done = 0;
 	struct	qla_hw_data	*ha = vha->hw;
 	int rc;
 
@@ -4024,8 +4023,7 @@ static void q24_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 			PRINT_ERROR("qla2x00t(%ld): Terminating cmd %p with "
 				"incorrect state %d", vha->host_no, cmd,
 				 cmd->state);
-		} else
-			do_tgt_cmd_done = 1;
+		}
 	}
 
 	rc = __q24_send_term_exchange(vha,cmd,atio);
@@ -6420,7 +6418,7 @@ out:
 }
 
 
-#ifdef QLA_ATIO_NOLOCK
+#ifdef QLA_ATIO_LOCK
 /* ha->hardware_lock supposed to be held on entry */
 /* called via callback from qla2xxx */
 void q83_atio_pkt(scsi_qla_host_t *vha, response_t *pkt)

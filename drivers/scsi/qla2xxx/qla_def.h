@@ -3026,6 +3026,8 @@ struct qla_qrate {
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 struct qlt_hw_data {
+	spinlock_t	atio_lock ____cacheline_aligned;
+
 	unsigned int	enable_class_2		:1;
 	unsigned int	enable_explicit_conf	:1;
 	unsigned int	host_shutting_down	:1;
@@ -3084,7 +3086,7 @@ struct qlt_hw_data {
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 
 
-#define QLA_ATIO_NOLOCK
+#define QLA_ATIO_LOCK
 #define QLA_RSPQ_NOLOCK
 #ifdef QLA_RSPQ_NOLOCK
 #include <linux/kthread.h>

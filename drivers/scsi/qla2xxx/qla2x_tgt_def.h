@@ -806,7 +806,7 @@ struct qla_tgt_data {
 #ifdef QLA_RSPQ_NOLOCK
 	void (*tgt_process_ctio)(scsi_qla_host_t *ha, response_t *pkt);
 #endif
-#ifdef QLA_ATIO_NOLOCK
+#ifdef QLA_ATIO_LOCK
 	void (*tgt83_atio_pkt)(scsi_qla_host_t *ha, response_t *pkt);
 #endif
 	int (*tgt_get_sess_login_state)(scsi_qla_host_t *vha, fc_port_t *fcport);

@@ -3780,6 +3780,7 @@ qla2x00_mem_alloc(struct qla_hw_data *ha, uint16_t req_len, uint16_t rsp_len,
 		    &ha->ha_tgt.atio_dma, GFP_KERNEL);
 		if (ha->ha_tgt.atio_ring == NULL)
 			goto fail_free_vp_map;
+		spin_lock_init(&ha->ha_tgt.atio_lock);
 	}
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 	ha->gid_list = dma_alloc_coherent(&ha->pdev->dev,
