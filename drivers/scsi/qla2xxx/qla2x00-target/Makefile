@@ -39,6 +39,9 @@ EXTRA_CFLAGS += -DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions
 #EXTRA_CFLAGS += -DCONFIG_QLA_TGT_DEBUG_WORK_IN_THREAD
 #EXTRA_CFLAGS += -DCONFIG_QLA_TGT_DEBUG_SRR
 
+# BUILD_2X_MODULE=y : set OUT of Tree build as default
+BUILD_2X_MODULE := y
+
 ifeq ($(KVER),)
   ifeq ($(KDIR),)
     KVER := $(shell uname -r)
@@ -98,10 +101,12 @@ ifneq ($(BUILD_2X_MODULE),)
 endif
 
 all: $(QLA2XXX_SCST) Modules.symvers Module.symvers
+	@echo "Target: all"
 	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m \
 	  SCST_INC_DIR=$(SCST_INC_DIR)
 
 install: all
+	@echo "Target: install"
 ifneq ($(BUILD_2X_MODULE),)
 	$(MAKE) SUBDIRS=$(QLA2XXX_DIR) -C $(QLA2XXX_DIR) $@ \
 	  SCST_INC_DIR=$(SCST_INC_DIR)
