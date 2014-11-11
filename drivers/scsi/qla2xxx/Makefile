@@ -1,3 +1,6 @@
+# BUILD_2X_MODULE=y : set OUT of Tree build as default
+BUILD_2X_MODULE := y
+
 ifeq ($(BUILD_2X_MODULE),)
 
 qla2xxx-y := qla_os.o qla_init.o qla_mbx.o qla_iocb.o qla_isr.o qla_gs.o \
@@ -60,9 +63,11 @@ qla2xxx_scst-objs := qla_os.o qla_init.o qla_mbx.o qla_iocb.o qla_isr.o qla_gs.o
 else
 
 all:
-	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m
+	@echo "qla: all"
+	$(MAKE) BUILD_2X_MODULE=$(BUILD_2X_MODULE) CONFIG_SCSI_QLA2XXX_TARGET=y  -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m
 
 install: all
+	@echo "qla: install"
 	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m \
 		modules_install
 
