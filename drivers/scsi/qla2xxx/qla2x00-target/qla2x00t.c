@@ -5185,7 +5185,7 @@ static int q2t_handle_task_mgmt(scsi_qla_host_t *vha, void *iocb)
 	    (sess->login_state != Q2T_LOGIN_STATE_PRLI_COMPLETED)) {
 
 		TRACE_MGMT_DBG("qla2x00t(%ld): task mgmt fn 0x%x for "
-			"non-existant session", vha->host_no, fn);
+			"non-existent session", vha->host_no, fn);
 		res = q2t_sched_sess_work(tgt, Q2T_SESS_WORK_TM, iocb,
 			IS_FWI2_CAPABLE(ha) ? sizeof(atio7_entry_t) :
 					      sizeof(notify_entry_t));
