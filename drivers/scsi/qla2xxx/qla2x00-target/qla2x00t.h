@@ -204,7 +204,7 @@ typedef enum {
 	Q2T_CFLAG_HW_TO = BIT_6,
 } cmd_flags_t;
 /*
- * Equivilant to IT Nexus (Initiator-Target)
+ * Equivalent to IT Nexus (Initiator-Target)
  */
 struct q2t_sess {
 	uint16_t loop_id;
