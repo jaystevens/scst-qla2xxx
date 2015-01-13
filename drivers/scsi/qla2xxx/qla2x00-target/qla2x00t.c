@@ -3328,6 +3328,31 @@ static int q2x_xmit_response(struct scst_cmd *scst_cmd)
 	return res;
 }
 
+/*
+ * Convert sense buffer (byte array) to little endian format as required by
+ * qla24xx firmware.
+ */
+static void q24_copy_sense_buffer_to_ctio(ctio7_status1_entry_t *ctio,
+	uint8_t *sense_buf, unsigned int sense_buf_len)
+{
+	uint32_t *src = (void *)sense_buf;
+	uint32_t *end = (void *)sense_buf + sense_buf_len;
+	uint8_t *p;
+	__be32 *dst = (void *)ctio->sense_data;
+
+	/*
+	 * The sense buffer allocated by scst_alloc_sense() is zero-filled and
+	 * has a length that is a multiple of four. This means that it is safe
+	 * to access the bytes after the end of the sense buffer up to a
+	 * boundary that is a multiple of four.
+	 */
+	for (p = (uint8_t *)end; ((uintptr_t)p & 3) != 0; p++)
+		WARN_ONCE(*p != 0, "sense_buf[%zd] = %d\n", p - sense_buf, *p);
+
+	for ( ; src < end; src++)
+		*dst++ = cpu_to_be32(*src);
+}
+
 static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 	struct q2t_prm *prm)
 {
@@ -3346,7 +3371,6 @@ static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 	ctio->residual = cpu_to_le32(prm->residual);
 	ctio->scsi_status = cpu_to_le16(prm->rq_result);
 	if (scst_sense_valid(prm->sense_buffer)) {
-		int i;
 		ctio1 = (ctio7_status1_entry_t *)ctio;
 		if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 1)) {
 			ctio1->flags |= __constant_cpu_to_le16(
@@ -3357,20 +3381,8 @@ static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 		ctio1->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1);
 		ctio1->scsi_status |= __constant_cpu_to_le16(SS_SENSE_LEN_VALID);
 		ctio1->sense_length = cpu_to_le16(prm->sense_buffer_len);
-		for (i = 0; i < prm->sense_buffer_len/4; i++)
-			((uint32_t *)ctio1->sense_data)[i] =
-				cpu_to_be32(((uint32_t *)prm->sense_buffer)[i]);
-#if 0
-		if (unlikely((prm->sense_buffer_len % 4) != 0)) {
-			static int q;
-			if (q < 10) {
-				PRINT_INFO("qla2x00t(%ld): %d bytes of sense "
-					"lost", prm->tgt->vha->host_no,
-					prm->sense_buffer_len % 4);
-				q++;
-			}
-		}
-#endif
+		q24_copy_sense_buffer_to_ctio(ctio1, prm->sense_buffer,
+					      prm->sense_buffer_len);
 	} else {
 		ctio1 = (ctio7_status1_entry_t *)ctio;
 		ctio1->flags &= ~__constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_0);
