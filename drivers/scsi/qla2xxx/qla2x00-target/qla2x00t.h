@@ -102,6 +102,11 @@
 #define	FC_TM_REJECT                4
 #define FC_TM_FAILED                5
 
+#ifndef scst_sense_internal_failure
+#define scst_sense_internal_failure     ABORTED_COMMAND, 0x44, 0
+#endif
+
+
 /*
  * Error code of q2t_pre_xmit_response() meaning that cmd's exchange was
  * terminated, so no more actions is needed and success should be returned

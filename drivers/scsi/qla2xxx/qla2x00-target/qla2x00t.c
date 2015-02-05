@@ -7545,10 +7545,10 @@ static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd)
 		TRACE_MGMT_DBG("Force rx_data cmd %p", cmd);
 
 		q2t_cleanup_hw_pending_cmd(vha, cmd);
-
-		scst_rx_data(scst_cmd, SCST_RX_STATUS_ERROR_FATAL,
-				SCST_CONTEXT_THREAD);
-
+		/* It might be sporadic, hence retriable */
+		scst_set_cmd_error(scst_cmd,SCST_LOAD_SENSE(scst_sense_internal_failure));
+		scst_rx_data(scst_cmd, SCST_RX_STATUS_ERROR_SENSE_SET,
+					 SCST_CONTEXT_THREAD);
 		/* scst_rx_data will trigger abort/terminate exchange
 		 * as part of error handling.  No need to term_exchange here.
 		 */
