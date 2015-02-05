@@ -5337,13 +5337,6 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 	switch (iocb->status_subcode) {
 
 	case ELS_PLOGI: {
-		/*
-		 * HACK. Let's do it on PLOGI, because seems there is no other
-		 * simple place, from where it can be called. In the worst
-		 * case, we will just reinstall RSCNs once again, it's harmless.
-		 */
-		schedule_work(&tgt->rscn_reg_work);
-
 		wwn = wwn_to_u64(inot->port_name);
 
 		TRACE_MGMT_DBG("ELS PLOGI rcv 0x%llx portid=%02x%02x%02x "
@@ -6925,8 +6918,17 @@ static void q2t_async_event(uint16_t code, scsi_qla_host_t *vha,
 		break;
 
 	case MBA_PORT_UPDATE:
-	case MBA_RSCN_UPDATE:
 		TRACE_MGMT_DBG("qla2x00t(%ld): Port update async event %#x "
+			"occurred", vha->host_no, code);
+		if ((mailbox[1] == 0xffff) && (mailbox[2] == 6)) {
+			/* global login.  Link up completed. */
+			schedule_work(&tgt->rscn_reg_work);
+		}
+
+		break;
+
+	case MBA_RSCN_UPDATE:
+		TRACE_MGMT_DBG("qla2x00t(%ld): RSCN async event %#x "
 			"occurred", vha->host_no, code);
 		/* .mark_all_devices_lost() is handled by the initiator driver */
 		break;
