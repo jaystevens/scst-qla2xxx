@@ -7026,6 +7026,10 @@ retry:
 		goto retry;
 	}
 	} /* verify */
+	else {
+		u64_to_wwn(wwn, fcport->port_name);
+	}
+
 
 skip_fcport_alloc:
 	sess = q2t_create_sess(vha, fcport, true);
