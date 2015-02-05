@@ -3326,7 +3326,8 @@ struct qla_hw_data {
 				IS_QLA25XX(ha) || IS_QLA81XX(ha) || \
 				IS_QLA82XX(ha) || IS_QLA83XX(ha) || \
 				IS_QLA8044(ha) || IS_QLA27XX(ha))
-#define IS_MSIX_NACK_CAPABLE(ha) (IS_QLA81XX(ha) || IS_QLA83XX(ha) || IS_QLA27XX(ha))
+#define IS_MSIX_NACK_CAPABLE(ha) (IS_QLA81XX(ha) || IS_QLA83XX(ha) || \
+				IS_QLA27XX(ha))
 #define IS_NOPOLLING_TYPE(ha)	(IS_QLA81XX(ha) && (ha)->flags.msix_enabled)
 #define IS_FAC_REQUIRED(ha)	(IS_QLA81XX(ha) || IS_QLA83XX(ha) || \
 				IS_QLA27XX(ha))
@@ -3498,6 +3499,8 @@ struct qla_hw_data {
 #define RISC_RDY_AFT_RESET	3
 #define RISC_SRAM_DUMP_CMPL	4
 #define RISC_EXT_MEM_DUMP_CMPL	5
+#define ISP_MBX_RDY		6
+#define ISP_SOFT_RESET_CMPL	7
 	int		fw_dump_reading;
 	int		prev_minidump_failed;
 	dma_addr_t	eft_dma;
@@ -3825,7 +3828,8 @@ typedef struct scsi_qla_host {
 #define VP_BIND_NEEDED		2
 #define VP_DELETE_NEEDED	3
 #define VP_SCR_NEEDED		4	/* State Change Request registration */
-	atomic_t		vp_state;
+#define VP_CONFIG_OK		5	/* Flag to cfg VP, if FW is ready */
+	atomic_t 		vp_state;
 #define VP_OFFLINE		0
 #define VP_ACTIVE		1
 #define VP_FAILED		2

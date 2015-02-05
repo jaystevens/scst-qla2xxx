@@ -217,6 +217,8 @@ qla27xx_skip_entry(struct qla27xx_fwdt_entry *ent, void *buf)
 {
 	if (buf)
 		ent->hdr.driver_flags |= DRIVER_FLAG_SKIP_ENTRY;
+	ql_dbg(ql_dbg_misc + ql_dbg_verbose, NULL, 0xd011,
+	    "Skipping entry %d\n", ent->hdr.entry_type);
 }
 
 static int
@@ -779,11 +781,30 @@ qla27xx_walk_template(struct scsi_qla_host *vha,
     struct qla27xx_fwdt_template *tmp, void *buf, ulong *len)
 {
 	struct qla27xx_fwdt_entry *ent = (void *)tmp + tmp->entry_offset;
+	struct qla_hw_data *ha = vha->hw;
+	uint32_t total_length = ha->fw_dump_len;
 	ulong count = tmp->entry_count;
 
 	ql_dbg(ql_dbg_misc, vha, 0xd01a,
 	    "%s: entry count %lx\n", __func__, count);
 	while (count--) {
+		if (buf) {
+			ql_dbg(ql_dbg_misc + ql_dbg_verbose, vha, 0xd012,
+			    "%s: buf: 0x%p, entry: 0x%p, entry_type: %d, entry_size: %d\n",
+			    __func__, buf, ent, ent->hdr.entry_type,
+			    ent->hdr.entry_size);
+
+			ql_dbg(ql_dbg_misc + ql_dbg_verbose, vha, 0xd013,
+			    "%s: data collected: 0x%lx, dump size left: 0x%x\n",
+			    __func__, *len, (total_length - *(uint32_t *)len));
+
+			if (*len > total_length) {
+				ql_log(ql_log_info, vha, 0xd014,
+				    "%s: More data collected [0x%lx > 0x%x].\n",
+				    __func__,  *len, total_length);
+				return;
+			}
+		}
 		if (qla27xx_find_entry(ent->hdr.entry_type)(vha, ent, buf, len))
 			break;
 		ent = qla27xx_next_entry(ent);
@@ -799,6 +820,13 @@ qla27xx_walk_template(struct scsi_qla_host *vha,
 
 	ql_dbg(ql_dbg_misc, vha, 0xd01b,
 	    "%s: len=%lx\n", __func__, *len);
+
+	if (buf) {
+		ql_log(ql_log_warn, vha, 0xd015,
+		    "Firmware dump saved to temp buffer (%ld/%p)\n",
+		    vha->host_no, vha->hw->fw_dump);
+		qla2x00_post_uevent_work(vha, QLA_UEVENT_CODE_FW_DUMP);
+	}
 }
 
 static void
@@ -952,9 +980,13 @@ qla27xx_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 		ql_log(ql_log_warn, vha, 0xd01e, "fwdump buffer missing.\n");
 	else if (!vha->hw->fw_dump_template)
 		ql_log(ql_log_warn, vha, 0xd01f, "fwdump template missing.\n");
+	else if (vha->hw->fw_dumped)
+		ql_log(ql_log_warn, vha, 0xd300,
+		    "Firmware has been previously dumped (%p),"
+		    " -- ignoring request\n", vha->hw->fw_dump);
 	else
 		qla27xx_execute_fwdt_template(vha);
-
+	
 	if (!hardware_locked)
 		spin_unlock_irqrestore(&vha->hw->hardware_lock, flags);
 }

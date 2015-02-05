@@ -787,7 +787,7 @@ qla2x00_sp_compl(void *data, void *ptr, int res)
 		    "SP reference-count to ZERO -- sp=%p cmd=%p.\n",
 		    sp, GET_CMD_SP(sp));
 		if (ql2xextended_error_logging & ql_dbg_io)
-			BUG();
+			WARN_ON(atomic_read(&sp->ref_count) == 0);
 		return;
 	}
 	if (!atomic_dec_and_test(&sp->ref_count))
@@ -1123,8 +1123,8 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	}
 
 	ql_dbg(ql_dbg_taskm, vha, 0x8002,
-	    "Aborting from RISC nexus=%ld:%d:%d sp=%p cmd=%p\n",
-	    vha->host_no, id, lun, sp, cmd);
+	    "Aborting from RISC nexus=%ld:%d:%d sp=%p cmd=%p handle=%x\n",
+	    vha->host_no, id, lun, sp, cmd, sp->handle);
 
 	/* Get a reference to the sp and drop the lock.*/
 	sp_get(sp);
@@ -6575,3 +6575,6 @@ MODULE_FIRMWARE(FW_FILE_ISP2300);
 MODULE_FIRMWARE(FW_FILE_ISP2322);
 MODULE_FIRMWARE(FW_FILE_ISP24XX);
 MODULE_FIRMWARE(FW_FILE_ISP25XX);
+MODULE_FIRMWARE(FW_FILE_ISP2031);
+MODULE_FIRMWARE(FW_FILE_ISP8031);
+MODULE_FIRMWARE(FW_FILE_ISP27XX);

@@ -808,16 +808,23 @@ skip_rio:
 			atomic_set(&vha->loop_down_timer, LOOP_DOWN_TIME);
 			/*
 			 * In case of loop down, restore WWPN from
-			 * NVRAM in case of FA-WWPN capable ISP
+			 * NVRAM in case of FA-WWPN capable ISP.
+			 * Restore for Physical Port only
 			 */
-			if (ha->flags.fawwpn_enabled) {
-				void *wwpn = ha->init_cb->port_name;
-				memcpy(vha->port_name, wwpn, WWN_SIZE);
-				fc_host_port_name(vha->host) =
-				    wwn_to_u64(vha->port_name);
-				ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x0144,
-				    "LOOP DOWN detected, restore WWPN %016llx\n",
-				    wwn_to_u64(vha->port_name));
+
+			if (!vha->vp_idx) {
+				if (ha->flags.fawwpn_enabled) {
+					void *wwpn = ha->init_cb->port_name;
+					memcpy(vha->port_name, wwpn, WWN_SIZE);
+					fc_host_port_name(vha->host) =
+					    wwn_to_u64(vha->port_name);
+					ql_dbg(ql_dbg_init + ql_dbg_verbose,
+					    vha, 0x0144, "LOOP DOWN detected,"
+					    "restore WWPN %016llx\n",
+					    wwn_to_u64(vha->port_name));
+				}
+
+				clear_bit(VP_CONFIG_OK, &vha->vp_flags);
 			}
 
 			vha->device_flags |= DFLG_NO_CABLE;
@@ -1010,6 +1017,7 @@ skip_rio:
 
 		set_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags);
 		set_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags);
+		set_bit(VP_CONFIG_OK, &vha->vp_flags);
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 		if (qla_target.tgt_async_event)
 			qla_target.tgt_async_event(mb[0], vha, mb);
@@ -2192,14 +2200,19 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	}
 
 	/* Validate handle. */
-	if (handle < req->num_outstanding_cmds)
+	if (handle < req->num_outstanding_cmds) {
 		sp = req->outstanding_cmds[handle];
-	else
-		sp = NULL;
-
-	if (sp == NULL) {
+		if (sp == NULL) {
+			ql_dbg(ql_dbg_io, vha, 0x3053,
+			    "%s(%ld): Already returned command for status "
+			    "handle (0x%x).\n", __func__, vha->host_no,
+			    sts->handle);
+			return;
+		}
+	} else {
 		ql_dbg(ql_dbg_io, vha, 0x3017,
-		    "Invalid status handle (0x%x).\n", sts->handle);
+		    "Invalid status handle, out of range (0x%x).\n",
+		    sts->handle);
 
 		if (!test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags)) {
 			if (IS_P3P_TYPE(ha))
@@ -2487,14 +2500,14 @@ out:
 		    "FCP command status: 0x%x-0x%x (0x%x) "
 		    "nexus=%ld:%d:%d portid=%02x%02x%02x oxid=0x%x "
 		    "cdb=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x len=0x%x "
-		    "rsp_info=0x%x resid=0x%x fw_resid=0x%x.\n",
+		    "rsp_info=0x%x resid=0x%x fw_resid=0x%x sp=%p cp=%p.\n",
 		    comp_status, scsi_status, res, vha->host_no,
 		    cp->device->id, cp->device->lun, fcport->d_id.b.domain,
 		    fcport->d_id.b.area, fcport->d_id.b.al_pa, ox_id,
 		    cp->cmnd[0], cp->cmnd[1], cp->cmnd[2], cp->cmnd[3],
 		    cp->cmnd[4], cp->cmnd[5], cp->cmnd[6], cp->cmnd[7],
 		    cp->cmnd[8], cp->cmnd[9], scsi_bufflen(cp), rsp_info_len,
-		    resid_len, fw_resid_len);
+		    resid_len, fw_resid_len, sp, cp);
 
 	if (rsp->status_srb == NULL)
 		sp->done(ha, sp, res);
@@ -2590,13 +2603,7 @@ qla2x00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, sts_entry_t *pkt)
 	}
 fatal:
 	ql_log(ql_log_warn, vha, 0x5030,
-	    "Error entry - invalid handle/queue.\n");
-
-	if (IS_P3P_TYPE(ha))
-		set_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags);
-	else
-		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-	qla2xxx_wake_dpc(vha);
+	    "Error entry - invalid handle/queue (%04x).\n", que);
 }
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
