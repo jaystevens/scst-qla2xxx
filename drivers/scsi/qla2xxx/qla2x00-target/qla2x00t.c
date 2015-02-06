@@ -7035,16 +7035,6 @@ retry:
 
 		rc = q24_get_loop_id(vha, s_id, &loop_id);
 		if (rc != 0) {
-			if ((s_id[0] == 0xFF) &&
-			    (s_id[1] == 0xFC)) {
-				/*
-				 * This is Domain Controller, so it should be
-				 * OK to drop SCSI commands from it.
-				 */
-				TRACE_MGMT_DBG("Unable to find initiator with "
-					"S_ID %x:%x:%x", s_id[0], s_id[1],
-					s_id[2]);
-			} else
 				PRINT_ERROR("qla2x00t(%ld): Unable to find "
 					"initiator with S_ID %x:%x:%x",
 					vha->host_no, s_id[0], s_id[1],
@@ -7053,17 +7043,8 @@ retry:
 		}
 	}
 
-	} else if ((s_id[0] == 0xFF) &&
-		(s_id[1] == 0xFC)) { /* !verify */
-		/*
-		 * This is Domain Controller, so it should be
-		 * OK to drop SCSI commands from it.
-		 */
-		TRACE_MGMT_DBG("Unable to find initiator with "
-			"S_ID %x:%x:%x", s_id[0], s_id[1],
-			s_id[2]);
-		goto out;
 	}
+
 
 	fcport = kzalloc(sizeof(*fcport), GFP_KERNEL);
 	if (fcport == NULL) {
@@ -7076,7 +7057,16 @@ retry:
 
 	fcport->loop_id = loop_id;
 	fcport->vha = vha;
-	fcport->port_type = FCT_UNKNOWN;
+	if ((s_id[0] == 0xFF) &&
+		(s_id[1] == 0xFC)) {
+		TRACE_MGMT_DBG("Domain Controller with "
+			"S_ID %x:%x:%x, fcport %p\n", s_id[0], s_id[1],
+			s_id[2], fcport);
+		fcport->port_type = FCT_SWITCH;
+		verify = 0;
+	} else {
+		fcport->port_type = FCT_UNKNOWN;
+	}
 	atomic_set(&fcport->state, FCS_UNCONFIGURED);
 	fcport->supported_classes = FC_COS_UNSPECIFIED;
 	fcport->d_id.b.al_pa = s_id[2];
@@ -7109,24 +7099,28 @@ retry:
 		u64_to_wwn(wwn, fcport->port_name);
 	}
 
+	if (!found &&
+		fcport->port_type == FCT_SWITCH) {
+		TRACE_MGMT_DBG("Update WWPN for Domain Controller with "
+			"S_ID %x:%x:%x, fcport %p\n", s_id[0], s_id[1],
+			s_id[2], fcport);
+		TRACE_MGMT_DBG("Using WWN = 0x%llx", wwn);
+		fcport->port_name[0] = (wwn >> 56) & 0xff;
+		fcport->port_name[1] = (wwn >> 48) & 0xff;
+		fcport->port_name[2] = (wwn >> 40) & 0xff;
+		fcport->port_name[3] = (wwn >> 32) & 0xff;
+		fcport->port_name[4] = (wwn >> 24) & 0xff;
+		fcport->port_name[5] = (wwn >> 16) & 0xff;
+		fcport->port_name[6] = (wwn >> 8) & 0xff;
+		fcport->port_name[7] = wwn & 0xff;
+	}
+
 
 skip_fcport_alloc:
 	sess = q2t_create_sess(vha, fcport, true);
 
-	if (qla_ini_mode_enabled(vha) && sess) {
-		if (!found) {
-			/* initiator side have not completed fabric scan
-			 * of the new device.  Once the scan have finished,
-			 * the new device will trigger a call to
-			 * q2t_fc_port_added.  sess->qla_fcport will be
-			 * set there at a later time/soon.
-			 */
-			kfree(fcport);
-		} else if (!sess->qla_fcport && fcport)
-			sess->qla_fcport = fcport;
 
-	} else if (!found)
-		//old behavior
+	if (!found )
 		kfree(fcport);
 
 out:
