@@ -2291,6 +2291,10 @@ static void q24_handle_abts(scsi_qla_host_t *vha, abts24_recv_entry_t *abts)
 	if (tag == ATIO_EXCHANGE_ADDRESS_UNKNOWN) {
 		TRACE_MGMT_DBG("qla2x00t(%ld): ABTS: Unknown Exchange "
 			"Address received", vha->host_no);
+	TRACE(TRACE_MGMT, "qla2x00t(%ld): task abort (s_id=%x:%x:%x, "
+		"tag=%d, param=%x)", vha->host_no, abts->fcp_hdr_le.s_id[2],
+		abts->fcp_hdr_le.s_id[1], abts->fcp_hdr_le.s_id[0], tag,
+		le32_to_cpu(abts->fcp_hdr_le.parameter));
 		goto out_err;
 	}
 
