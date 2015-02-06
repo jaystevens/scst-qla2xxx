@@ -178,6 +178,8 @@ static int __q2x_send_term_exchange(scsi_qla_host_t *vha, struct q2t_cmd *cmd,
 static inline void q2t_free_cmd (struct q2t_cmd *cmd);
 static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
 	atio7_entry_t *atio, struct qfull_arg *arg, qfull_cmd_type_t type);
+static void q2t_fc_port_logo_compl(scsi_qla_host_t *vha, fc_port_t *fcport,
+	int rc);
 
 #ifndef CONFIG_SCST_PROC
 
@@ -843,6 +845,7 @@ static int q2t_target_detect(struct scst_tgt_template *tgtt)
 		.tgt_get_sess_login_state = q2t_get_sess_login_state,
 		.tgt_host_reset_handler = q2t_host_reset_handler,
 		.tgt_init_term_exchange = q2t_init_term_exchange,
+		.tgt_fc_port_logo_compl = q2t_fc_port_logo_compl,
 	};
 
 	TRACE_ENTRY();
@@ -890,6 +893,10 @@ static void q2t_free_session_done(struct scst_session *scst_sess)
 
 	TRACE_MGMT_DBG("Unregistration of sess %p finished", sess);
 
+	if(sess->qla_fcport) {
+		sess->qla_fcport->tgt_session = NULL;
+		sess->qla_fcport = NULL;
+	}
 	kmem_cache_free(q2t_sess_cachep, sess);
 
 	if (tgt == NULL)
@@ -1474,6 +1481,12 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 		sess->login_state = Q2T_LOGIN_STATE_NONE;
 		if (sess->local && !local)
 			sess->local = 0;
+		if (!sess->qla_fcport) {
+			sess->qla_fcport = qla2xxx_find_fcport_by_wwpn(vha,
+				wwn_to_u64(sess->port_name));
+			if (sess->qla_fcport)
+				sess->qla_fcport->tgt_session = sess;
+		}
 		spin_unlock_irq(&ha->hardware_lock);
 		goto out;
 	}
@@ -1502,6 +1515,20 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 	sess->local = local;
 	BUILD_BUG_ON(sizeof(sess->port_name) != sizeof(fcport->port_name));
 	memcpy(sess->port_name, fcport->port_name, sizeof(sess->port_name));
+	/* Just in case we created a temp fcport */
+	sess->qla_fcport = 
+		qla2xxx_find_fcport_by_wwpn(vha, wwn_to_u64(sess->port_name));
+	if (sess->qla_fcport)
+		sess->qla_fcport->tgt_session = sess;
+	else {
+		PRINT_ERROR("qla2x00t(%ld): Search for fcport WWPN failed. "
+			" %02x:%02x:%02x:%02x:%02x:%02x:"
+			"%02x:%02x", vha->host_no,
+			fcport->port_name[0], fcport->port_name[1],
+			fcport->port_name[2], fcport->port_name[3],
+			fcport->port_name[4], fcport->port_name[5],
+			fcport->port_name[6], fcport->port_name[7]);
+	}
 
 	/* login session is just created */
 	sess->login_state = Q2T_LOGIN_STATE_NONE;
@@ -1540,7 +1567,7 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 		goto out_free_sess_wwn;
 	}
 
-	TRACE_MGMT_DBG("Adding sess %p to tgt %p", sess, tgt);
+	TRACE_MGMT_DBG("Adding sess %p to tgt %p, fcport %p", sess, tgt, sess->qla_fcport);
 
 
 	/* FC-4 login state verified in qla2x00_get_port_database */

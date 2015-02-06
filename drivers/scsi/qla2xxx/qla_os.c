@@ -4422,6 +4422,14 @@ qla2x00_post_async_work(adisc, QLA_EVT_ASYNC_ADISC);
 qla2x00_post_async_work(adisc_done, QLA_EVT_ASYNC_ADISC_DONE);
 qla2x00_post_async_work(gpdb, QLA_EVT_ASYNC_GPDB);
 
+int qla2x00_tgt_post_async_logout_work( struct scsi_qla_host *vha,
+    fc_port_t *fcport, uint16_t *data)
+{
+	printk("tgt_post_async_logout_work: fcport %p , vha %p\n", fcport, vha);
+	return(qla2x00_post_async_logout_work(vha, fcport, NULL));
+}
+EXPORT_SYMBOL(qla2x00_tgt_post_async_logout_work);
+
 int
 qla2x00_post_uevent_work(struct scsi_qla_host *vha, u32 code)
 {
@@ -6470,6 +6478,13 @@ static bool __init qla2x00_parse_ini_mode(void)
 
 	return true;
 }
+
+void qla_logo_completion_handler(fc_port_t *fcport, int rc)
+{
+	if (qla_target.tgt_fc_port_logo_compl)
+		qla_target.tgt_fc_port_logo_compl(fcport->vha, fcport, rc);
+}
+EXPORT_SYMBOL(qla_logo_completion_handler);
 
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 

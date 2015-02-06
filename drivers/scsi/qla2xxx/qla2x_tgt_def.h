@@ -812,6 +812,7 @@ struct qla_tgt_data {
 	int (*tgt_get_sess_login_state)(scsi_qla_host_t *vha, fc_port_t *fcport);
 	void (*tgt_host_reset_handler)(struct qla_hw_data *ha);
 	void (*tgt_init_term_exchange)(scsi_qla_host_t *vha);
+	void (*tgt_fc_port_logo_compl)(scsi_qla_host_t *ha, fc_port_t *fcport, int rc);
 };
 
 int qla2xxx_tgt_register_driver(struct qla_tgt_data *tgt);

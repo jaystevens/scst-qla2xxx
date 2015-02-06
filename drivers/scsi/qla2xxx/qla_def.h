@@ -2114,6 +2114,7 @@ typedef struct fc_port {
 	uint16_t port_id;
 
 	unsigned long retry_delay_timestamp;
+	void *tgt_session;
 } fc_port_t;
 
 #include "qla_mr.h"

@@ -151,6 +151,8 @@ extern int qla2x00_post_async_adisc_done_work(struct scsi_qla_host *,
     fc_port_t *, uint16_t *);
 extern int qla2x00_post_async_gpdb_work(struct scsi_qla_host *, fc_port_t *,
     uint16_t *);
+extern int qla2x00_tgt_post_async_logout_work( struct scsi_qla_host *,
+    fc_port_t *, uint16_t *);
 
 extern int qla81xx_restart_mpi_firmware(scsi_qla_host_t *);
 
@@ -185,6 +187,7 @@ qla2x00_free_exlogin_buffer(struct qla_hw_data *);
 extern void qla2x00_start_drv_heartbeat(scsi_qla_host_t *, unsigned long);
 extern int qla2x00_set_driver_heartbeat(scsi_qla_host_t *, uint16_t,uint16_t);
 extern void qla2x00_stop_drv_heartbeat(scsi_qla_host_t *vha);
+extern void qla_logo_completion_handler(fc_port_t *fcport, int rc);
 
 /*
  * Global Functions in qla_mid.c source file.
