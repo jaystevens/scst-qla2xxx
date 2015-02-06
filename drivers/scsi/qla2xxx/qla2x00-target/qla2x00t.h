@@ -216,6 +216,9 @@ struct q2t_sess {
 	unsigned int deleted:1;
 	unsigned int local:1;
 	unsigned int logout_acc_pending:1;  /* ACC to LOGO or PRLO is pending */
+	unsigned int logo_complete_pending:1;
+	unsigned int plogi_ack_needed:1;
+	unsigned int flush_complete_pending:1;
 	int login_state;    /* Used in the error handling of FCP_CMDs without */
 			    /* proper login session. Values defined above. */
 	struct scst_session *scst_sess;
@@ -229,6 +232,10 @@ struct q2t_sess {
 
 	uint8_t port_name[WWN_SIZE];
 	fc_port_t *qla_fcport;
+	union {
+		notify_entry_t tm_iocb;
+	};
+	struct completion async_logo_comp; /* async logo completion  */
 };
 
 #define MAX_QFULL_CMDS_ALLOC	8192
@@ -311,6 +318,7 @@ struct q2t_sess_work_param {
 #define Q2T_SESS_WORK_TERM_WCMD	3	//terminate with & notify scst of cmd.
 #define Q2T_SESS_WORK_TERM	4	//terminate without cmd reference
 #define Q2T_SESS_WORK_LOGIN     5
+#define Q2T_SESS_WORK_LOGO	6
 	int type;
 	int reset_count;
 

@@ -33,6 +33,7 @@
 #include <linux/list.h>
 #include <linux/workqueue.h>
 #include <asm/unaligned.h>
+#include <linux/completion.h>
 
 #ifdef INSIDE_KERNEL_TREE
 #include <scst/scst.h>
@@ -70,6 +71,10 @@
 	TRACE_SPECIAL)
 # endif
 #endif
+
+/* Flush opcodes */
+#define		Q2T_FLUSH_WITH_LOGO	1
+#define		Q2T_FLUSH_ONLY		0
 
 #ifdef QLT_LOOP_BACK
 int qlb_enabled;
@@ -180,6 +185,14 @@ static void q2t_alloc_qfull_cmd(struct scsi_qla_host *vha,
 	atio7_entry_t *atio, struct qfull_arg *arg, qfull_cmd_type_t type);
 static void q2t_fc_port_logo_compl(scsi_qla_host_t *vha, fc_port_t *fcport,
 	int rc);
+static int q2t_find_any_matching_sess(scsi_qla_host_t *vha, void *iocb,
+	struct q2t_sess *sess, struct q2t_sess *sid_sess);
+static void	q2t_update_sess(struct q2t_sess *sess, void *iocb);
+static void q2t_fc_port_added(scsi_qla_host_t *vha, fc_port_t *fcport);
+static int q2t_sess_logo_complete(scsi_qla_host_t *vha, struct q2t_sess *sess);
+static void q2t_invalidate_sess(scsi_qla_host_t *vha, struct q2t_sess *sess);
+static void	q2t_block_flush(struct q2t_sess *sess, uint8_t logo, void *iocb);
+
 
 #ifndef CONFIG_SCST_PROC
 
@@ -951,6 +964,44 @@ static int q2t_unreg_sess(struct q2t_sess *sess)
 }
 
 /* ha->hardware_lock supposed to be held on entry */
+static int q2t_reset_sess(scsi_qla_host_t *vha, void *iocb, int mcmd,
+	struct q2t_sess *sess, bool sess_down)
+{
+	int loop_id;
+	uint16_t lun = 0;
+	int res = 0;
+	struct scsi_qlt_host	*vha_tgt = &vha->vha_tgt;
+
+	TRACE_ENTRY();
+
+	if (sess == NULL) {
+		res = -ESRCH;
+		vha_tgt->tgt->tm_to_unknown = 1;
+		goto out;
+	}
+
+	loop_id = sess->loop_id;
+	if (sess_down)
+		sess->login_state = Q2T_LOGIN_STATE_NONE;
+
+	TRACE_MGMT_DBG("scsi(%ld): SESS: resetting (session %p from port "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		"mcmd %x, loop_id %d)", vha->host_no, sess,
+		sess->port_name[0], sess->port_name[1],
+		sess->port_name[2], sess->port_name[3],
+		sess->port_name[4], sess->port_name[5],
+		sess->port_name[6], sess->port_name[7],
+		mcmd, loop_id);
+
+	res = q2t_issue_task_mgmt(sess, (uint8_t *)&lun, sizeof(lun),
+			mcmd, iocb, Q24_MGMT_SEND_NACK);
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+/* ha->hardware_lock supposed to be held on entry */
 static int q2t_reset(scsi_qla_host_t *vha, void *iocb, int mcmd,
 	bool sess_down)
 {
@@ -1513,6 +1564,7 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *vha, fc_port_t *fcport,
 	sess->loop_id = fcport->loop_id;
 	sess->conf_compl_supported = fcport->conf_compl_supported;
 	sess->local = local;
+	init_completion(&sess->async_logo_comp);
 	BUILD_BUG_ON(sizeof(sess->port_name) != sizeof(fcport->port_name));
 	memcpy(sess->port_name, fcport->port_name, sizeof(sess->port_name));
 	/* Just in case we created a temp fcport */
@@ -1631,7 +1683,7 @@ static void q2t_fc_port_added(scsi_qla_host_t *vha, fc_port_t *fcport)
 		if (sess != NULL) {
 			sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
 			q2t_sess_put(sess); /* put the extra creation ref */
-			if (qla_ini_mode_enabled(vha))
+			// FIXmedg:: if (qla_ini_mode_enabled(vha))
 				sess->qla_fcport = fcport;
 		}
 	} else {
@@ -2545,6 +2597,16 @@ static void q2t_task_mgmt_fn_done(struct scst_mgmt_cmd *scst_mcmd)
 
 	if (IS_FWI2_CAPABLE(ha)) {
 		if (mcmd->flags == Q24_MGMT_SEND_NACK) {
+			TRACE_MGMT_DBG("scst_mcmd (%p), subcode (%d) -- send ACK ", scst_mcmd,
+			mcmd->orig_iocb.notify_entry24.status_subcode);
+
+			/* Always update session after flush */
+			if (mcmd->orig_iocb.notify_entry24.status_subcode ==
+				// ELS_PLOGI && mcmd->sess->update_needed) {
+				ELS_PLOGI ) {
+				q2t_update_sess(mcmd->sess, &mcmd->orig_iocb);
+			}
+
 			q24_send_notify_ack(vha,
 				&mcmd->orig_iocb.notify_entry24, 0, 0, 0);
 
@@ -4998,7 +5060,7 @@ static int q2t_send_cmd_to_scst(scsi_qla_host_t *vha, atio_t *atio)
 		atio7_entry_t *a = (atio7_entry_t *)atio;
 		sess = q2t_find_sess_by_s_id(tgt, a->fcp_hdr.s_id);
 		if (unlikely(sess == NULL)) {
-			TRACE_MGMT_DBG("qla2x00t(%ld): Unable to find "
+			TRACE_MGMT_DBG("qla2x00t(%ld): CMD: Unable to find "
 				"wwn login (s_id %x:%x:%x), trying to create "
 				"it manually", vha->host_no,
 				a->fcp_hdr.s_id[0], a->fcp_hdr.s_id[1],
@@ -5351,11 +5413,12 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 {
 	int res = 1; /* send notify ack */
 	struct q2t_tgt *tgt = vha->vha_tgt.tgt;
-	struct q2t_sess *sess;
+	struct q2t_sess *sess, *pid_sess, *wwn_sess;
 	uint8_t s_id[3];
 	notify83xx_entry_t *inot = (notify83xx_entry_t *)iocb;
 	uint16_t wd3_lo;
 	uint64_t wwn;
+	uint16_t iflags;
 
 	TRACE_ENTRY();
 
@@ -5367,18 +5430,32 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 
 	case ELS_PLOGI: {
 		wwn = wwn_to_u64(inot->port_name);
+		iflags = le16_to_cpu(inot->flags);
 
 		TRACE_MGMT_DBG("ELS PLOGI rcv 0x%llx portid=%02x%02x%02x "
 			"hndl 0x%x", wwn,
 			inot->port_id[2],inot->port_id[1],inot->port_id[0],
 			le16_to_cpu(inot->nport_handle));
 
+		/* if Portname/Nodename is valid */
+#if 0
+		if (!(iflags & BIT_4))
+			wwn = 0;
+#endif
+
+		s_id[0] = iocb->port_id[2];
+		s_id[1] = iocb->port_id[1];
+		s_id[2] = iocb->port_id[0];
+		pid_sess = q2t_find_sess_by_s_id_include_deleted(tgt, s_id);
 		if (wwn)
-			sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
+			wwn_sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
 		else
-			sess = q2t_find_sess_by_loop_id(tgt,
+			wwn_sess = q2t_find_sess_by_loop_id(tgt,
 				le16_to_cpu(inot->nport_handle));
 
+		res = q2t_find_any_matching_sess(vha, iocb, wwn_sess,
+			pid_sess);
+#if  0
 		if (sess != NULL) {
 			sess->local = 0;
 			sess->login_state = Q2T_LOGIN_STATE_PLOGI_COMPLETED;
@@ -5393,9 +5470,10 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 				sess->qla_fcport->loop_id = sess->loop_id;
 			}
 		}
+#endif
 
-		/* if !sess schedule create new sess */
-		if ((sess == NULL) || qla_ini_mode_enabled(vha)) {
+		/* if NO sess found then schedule create new sess */
+		if (res == 1) {
 			q2t_sched_sess_work(tgt, Q2T_SESS_WORK_LOGIN, iocb,
 					sizeof(*iocb));
 			res = 0; /* send nack after session creation */
@@ -5424,18 +5502,37 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 	{
 		wd3_lo = le16_to_cpu(inot->u.prli.wd3_lo);
 		wwn = wwn_to_u64(inot->port_name);
+		iflags = le16_to_cpu(inot->flags);
 
 		TRACE_MGMT_DBG("ELS PRLI rcv 0x%llx portid=%02x%02x%02x "
 			"hndl 0x%x", wwn,
 			inot->port_id[2],inot->port_id[1],inot->port_id[0],
 			le16_to_cpu(inot->nport_handle));
 
+		/* if Portname/Nodename is valid */
+#if 0
+		if (!(iflags & BIT_4))
+			wwn = 0;
+#endif
+
+		s_id[0] = iocb->port_id[2];
+		s_id[1] = iocb->port_id[1];
+		s_id[2] = iocb->port_id[0];
+		sess = q2t_find_sess_by_s_id_include_deleted(tgt, s_id);
 		if (wwn)
-			sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
+			wwn_sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
 		else
-			sess = q2t_find_sess_by_loop_id(tgt,
+			wwn_sess = q2t_find_sess_by_loop_id(tgt,
 				le16_to_cpu(inot->nport_handle));
-		if (sess != NULL) {
+
+		if (sess && wwn_sess && sess == wwn_sess) {	/* Matching PID and WWPN */
+			TRACE_MGMT_DBG("ELS PRLI SID and WWN match");
+			if (sess->login_state != Q2T_LOGIN_STATE_PLOGI_COMPLETED) {
+				TRACE_MGMT_DBG("ELS PRLI: PLOGI not completed portid=%06x hndl 0x%x",
+				sess->s_id.b24,
+				le16_to_cpu(inot->nport_handle));
+				res = 0;  /* No ack */
+			} else {
 			sess->local = 0;
 			sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
 			sess->loop_id = le16_to_cpu(inot->nport_handle);
@@ -5446,19 +5543,23 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			if (wd3_lo & BIT_7)
 				sess->conf_compl_supported = 1;
 
-			TRACE_MGMT_DBG("ELS PRLI rcv portid=%06x hndl 0x%x",
+				TRACE_MGMT_DBG("ELS PRLI complete portid=%06x hndl 0x%x",
 				sess->s_id.b24,
 				le16_to_cpu(inot->nport_handle));
-			/* invalidate other session with the same s_id */
-			q2t_invalidate_other_sess(tgt, sess);
-		}
-
-		/* There is no need to reach over to initator side,
-		 * in dual mode, to notify new state. FW will post
-		 * Port DB change/AE8014 to trigger a personality
+			}
+		} else {
+		/* 
+		 * Initiator: F/W will Post DB event (AE8014) - personality
 		 * change query.
 		 */
-		res = 1; //ack Notify with FW
+			TRACE_MGMT_DBG("ELS PRLI rcv portid=%06x hndl 0x%x -- NO MATCH",
+				sess->s_id.b24,
+				le16_to_cpu(inot->nport_handle));
+			if (wwn_sess== NULL) {
+				TRACE_MGMT_DBG("ELS PRLI : No WWN match"); 
+			}
+			res = 0;  /* No ack */
+		}
 		break;
 	}
 
@@ -6192,6 +6293,7 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *vha, void *iocb)
 	}
 
 	if (send_notify_ack) {
+		TRACE_DBG("Send notify ACK %p", iocb24);
 		if (IS_FWI2_CAPABLE(ha))
 			q24_send_notify_ack(vha, iocb24, 0, 0, 0);
 		else
@@ -7138,6 +7240,7 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 	uint8_t *s_id = NULL; /* to hide compiler warnings */
 	uint8_t local_s_id[3], verify=1;
 	int loop_id = -1; /* to hide compiler warnings */
+	uint16_t iflags;
 #if 0
 	int login_state;
 	bool logout_acc_pending;
@@ -7227,6 +7330,14 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			loop_id = le16_to_cpu(prm->inot.nport_handle);
 
 			wwn = wwn_to_u64(prm->inot.port_name);
+			iflags = le16_to_cpu(prm->inot.flags);
+
+			TRACE_MGMT_DBG("Found existing wwn 0x%llx, flags %d", wwn,iflags);
+			/* if Portname/Nodename is valid */
+#if 0
+			if (!(iflags & BIT_4))
+				wwn = 0;
+#endif
 
 			if (wwn)
 				sess = q2t_find_sess_by_port_name(tgt,
@@ -7253,6 +7364,47 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			/* else default back to s_id to find session */
 		}
 		break;
+
+	case Q2T_SESS_WORK_LOGO:
+	{
+		if (qla2x00_reset_active(vha) ||
+			(prm->reset_count != ha->chip_reset))
+			goto out_put;
+
+		if (IS_FWI2_CAPABLE(ha)) {
+			s_id = local_s_id;
+			s_id[0] = prm->inot.port_id[2];
+			s_id[1] = prm->inot.port_id[1];
+			s_id[2] = prm->inot.port_id[0];
+			loop_id = le16_to_cpu(prm->inot.nport_handle);
+
+			wwn = wwn_to_u64(prm->inot.port_name);
+			iflags = le16_to_cpu(prm->inot.flags);
+
+			TRACE_MGMT_DBG("Found existing wwn 0x%llx, flags %d", wwn,iflags);
+			sess = q2t_find_sess_by_port_name(tgt, prm->inot.port_name);
+			if( sess ) {
+				q2t_block_flush(sess, Q2T_FLUSH_WITH_LOGO, (void *)&prm->inot);
+				TRACE_MGMT_DBG("Waiting for LOGO to complete : sess %p , loop_id %d", 
+					sess, sess->loop_id);
+				/* It will always complete ... */
+				spin_unlock_irq(&ha->hardware_lock);
+				mutex_unlock(&vha->vha_tgt.tgt_mutex);
+				wait_for_completion(&sess->async_logo_comp);
+				mutex_lock(&vha->vha_tgt.tgt_mutex);
+				spin_lock_irq(&ha->hardware_lock);
+				sess->logo_complete_pending = 0;
+				q2t_invalidate_sess(vha, sess);
+				TRACE_MGMT_DBG("Issue SESS Reset: sess %p", sess);
+				q2t_reset(vha, &prm->inot, Q2T_NEXUS_LOSS_SESS, false);
+				q2t_sess_logo_complete(sess->tgt->ha, sess);
+			} else {
+				TRACE_MGMT_DBG("sess %p not found", sess);
+			}
+			goto after_find;
+		}
+		break;
+	}
 
 	default:
 		sBUG_ON(1);
@@ -7341,6 +7493,7 @@ after_find:
 
 		q2t_sess_get(sess);
 	} else {
+		TRACE_MGMT_DBG("sess %p not found", sess);
 		/*
 		 * We are under tgt_mutex, so a new sess can't be added
 		 * behind us.
@@ -7426,6 +7579,7 @@ send2:
 	}
 #endif
 
+	case Q2T_SESS_WORK_LOGO:
 	case Q2T_SESS_WORK_LOGIN:
 		switch (prm->inot.status_subcode) {
 		case ELS_PLOGI:
@@ -7449,10 +7603,11 @@ send2:
 			break;
 		}
 
-		if (IS_FWI2_CAPABLE(ha))
+		if (IS_FWI2_CAPABLE(ha)) {
+			TRACE_MGMT_DBG("Sending ACK for LOGIN WORK: %p", prm);
 			q24_send_notify_ack(vha,
 				(notify24xx_entry_t*)&prm->inot, 0, 0, 0);
-		else
+		} else
 			q2x_send_notify_ack(vha,
 				(notify_entry_t*)&prm->inot, 0, 0, 0, 0,
 					0, 0);
@@ -8998,6 +9153,240 @@ static void __exit q2t_exit(void)
 
 	/* Let's make lockdep happy */
 	up_write(&q2t_unreg_rwsem);
+
+	TRACE_EXIT();
+	return;
+}
+
+static void	q2t_update_sess(struct q2t_sess *sess, void *iocb)
+{
+	notify83xx_entry_t *inot = (notify83xx_entry_t *)iocb;
+
+	if (!sess) {
+		PRINT_ERROR("UPDATE SESS: Couldn't update session %p\n", sess);
+		return;
+	}
+	TRACE_DBG("UPDATE SESS: %p\n", sess);
+	sess->local = 0;
+	sess->login_state = Q2T_LOGIN_STATE_PLOGI_COMPLETED;
+	sess->loop_id = le16_to_cpu(inot->nport_handle);
+	sess->s_id.b.domain = inot->port_id[2];
+	sess->s_id.b.area = inot->port_id[1];
+	sess->s_id.b.al_pa = inot->port_id[0];
+	sess->s_id.b.rsvd_1 = 0;
+
+	if (sess->qla_fcport) {
+		sess->qla_fcport->d_id = sess->s_id;
+		sess->qla_fcport->loop_id = sess->loop_id;
+		BUILD_BUG_ON(sizeof(sess->port_name) != sizeof(sess->qla_fcport->port_name));
+		memcpy(sess->port_name, sess->qla_fcport->port_name,
+			sizeof(sess->port_name));
+	}
+	TRACE_MGMT_DBG("scsi(%ld): Updating (session %p, WWPN: "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		"loop_id %d)", sess->tgt->ha->host_no, sess,
+		sess->port_name[0], sess->port_name[1],
+		sess->port_name[2], sess->port_name[3],
+		sess->port_name[4], sess->port_name[5],
+		sess->port_name[6], sess->port_name[7],
+		sess->loop_id);
+	sess->plogi_ack_needed = 0;
+}
+
+/* ha->hardware_lock supposed to be held on entry */
+static void	
+q2t_block_flush(struct q2t_sess *sess, uint8_t logo, void *iocb)
+{
+	int rc;
+
+	TRACE_MGMT_DBG("q2t_block_flush: sess %p logo flg %d iocb %p",
+ 				sess, logo, iocb);
+	if (!sess->qla_fcport) {
+		return;
+	}
+ 	if (logo) {
+		/* save immediate Notif IOCB for Ack when all cmd have drained*/
+		memcpy(&sess->tm_iocb, iocb, sizeof(sess->tm_iocb));
+ 		/* flush active CTIOs + exchanges from fw */
+		sess->logo_complete_pending = 1;
+		rc = qla2x00_tgt_post_async_logout_work(sess->tgt->ha,sess->qla_fcport,
+						NULL);
+ 		if (rc != QLA_SUCCESS) {
+			TRACE_MGMT_DBG("Schedule logo failed sess %p rc %d ",
+ 				sess, rc);
+ 		}
+	} else {
+		/* Perform implicit logout when necessary */
+		rc = q2t_reset_sess(sess->tgt->ha, iocb, Q2T_NEXUS_LOSS_SESS,
+					sess, false);
+ 	}
+}
+
+static int q2t_sess_logo_complete(scsi_qla_host_t *vha, struct q2t_sess *sess)
+{
+	int	res = 0;
+	uint16_t lun = 0;
+
+	TRACE_MGMT_DBG("SESS logo complete %p ", sess);
+	if (sess) {
+		if (sess->plogi_ack_needed){
+			res = q2t_issue_task_mgmt(sess, (uint8_t *)&lun, sizeof(lun),
+				Q2T_NEXUS_LOSS_SESS, &sess->tm_iocb, Q24_MGMT_SEND_NACK);
+		} else {
+			res = q2t_issue_task_mgmt(sess, (uint8_t *)&lun, sizeof(lun),
+				Q2T_NEXUS_LOSS_SESS, NULL, Q24_MGMT_SEND_NACK);
+			sess->plogi_ack_needed= 0;
+		}
+	}
+	TRACE_MGMT_DBG("Logo complete %p finished", sess);
+	return res;
+}
+
+static void q2t_invalidate_sess(scsi_qla_host_t *vha, struct q2t_sess *sess)
+{
+	/* Clean the session */
+	//if (clean) {
+		// sess->conf_compl_supported = 0;
+		// sess->s_id.b24 = 0;
+		// sess->port_name[0] = 0; sess->port_name[1] = 0;
+		// sess->port_name[2]= 0; sess->port_name[3]= 0;
+		// sess->port_name[4]= 0; sess->port_name[5]= 0;
+		// sess->port_name[6]= 0; sess->port_name[7]= 0;
+	// } else {
+		/* invalidate the session */
+		/* mark dev lost to trigger a logout
+	 	* or cleanup the slot.
+	 	*/
+		sess->login_state = Q2T_LOGIN_STATE_NONE;
+		if (sess->qla_fcport)
+			qla2x00_mark_device_lost(vha, sess->qla_fcport,1,1);
+	// }
+}
+
+/* ha->hardware_lock supposed to be held on entry */
+static int q2t_find_any_matching_sess(scsi_qla_host_t *vha, void *iocb,
+	struct q2t_sess *sess, struct q2t_sess *sid_sess)
+{
+	int loop_id;
+	int	res = 0;
+	struct q2t_tgt *tgt = vha->vha_tgt.tgt;
+	notify24xx_entry_t *n = (notify24xx_entry_t *)iocb;
+
+	loop_id = le16_to_cpu(n->nport_handle);
+
+	TRACE_MGMT_DBG("scsi(%ld): Find any matching session in session db: "
+		"loop_id %d\n", vha->host_no, loop_id);
+	if (sess) {
+	TRACE_MGMT_DBG("scsi(%ld): Find (WWN) (session %p from WWN port "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		"loop_id %d)", vha->host_no, sess,
+		sess->port_name[0], sess->port_name[1],
+		sess->port_name[2], sess->port_name[3],
+		sess->port_name[4], sess->port_name[5],
+		sess->port_name[6], sess->port_name[7],
+		sess->loop_id);
+	}
+	if (sid_sess) {
+	TRACE_MGMT_DBG("scsi(%ld): Find (PID) (session %p from SID port "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		"loop_id %d)", vha->host_no, sid_sess,
+		sid_sess->port_name[0], sid_sess->port_name[1],
+		sid_sess->port_name[2], sid_sess->port_name[3],
+		sid_sess->port_name[4], sid_sess->port_name[5],
+		sid_sess->port_name[6], sid_sess->port_name[7],
+		sid_sess->loop_id);
+	}
+
+	/* Match on PID and WWPN then flush I/O since handle is being reuse */
+	if (sid_sess && sess && sid_sess == sess) {	/* Matching PID and WWPN */
+		TRACE_MGMT_DBG("ELS - (SID and WWN) match");
+		res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
+		res = 0; /* Don't send nack */
+	} else if (sid_sess || sess) {	/* SID only, WWPN only. or Both */
+		/* Determine what to flush */
+		if (sid_sess) {
+			TRACE_MGMT_DBG("ELS FLUSH I/O - (SID only)");
+			q2t_invalidate_sess(vha, sid_sess);
+			res = 0; /* Don't send nack */
+			if (sess == NULL){
+				/* Matching PID/SID and different WWPN */
+				q2t_block_flush(sid_sess, Q2T_FLUSH_ONLY, iocb);
+			} else {
+				/* Matching PID/SID and matching WWPN */
+				res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
+			}
+		}
+		if (sess) {
+			TRACE_MGMT_DBG("ELS FLUSH I/O - (WWPN only)");
+			sess->login_state = Q2T_LOGIN_STATE_NONE;
+			res = 0; /* Don't send nack */
+			/* Matching WWPN and different PID/SID */
+			if (sid_sess == NULL){
+				sess->plogi_ack_needed  = 1;
+			   	TRACE_MGMT_DBG("Scheduling work for logo : sess %p iocb %p loop_id %d", 
+					sess,iocb,sess->loop_id);
+				res = q2t_sched_sess_work(tgt, Q2T_SESS_WORK_LOGO, n,
+					sizeof(*n));
+			} else {
+				res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
+			}
+		}
+		/* Flush is queued, so session update occurs afterwards */
+	 } else {	/* No Matching */
+		res = 1; /* Ok to send nack */
+		TRACE_MGMT_DBG("No Matching Session - (WWPN or SID)");
+	}
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+/*
+ * q2t_fc_port_logo_compl
+ *
+ * This routine is a callback after the async logout work. It will wakeup the
+ * thread that initated the LOGOUT in the target driver.
+ *
+ */
+static void q2t_fc_port_logo_compl(scsi_qla_host_t *vha, fc_port_t *fcport,
+	int rc)
+{
+	struct q2t_tgt *tgt;
+	struct q2t_sess* sess = (struct q2t_sess*)
+			fcport->tgt_session;
+
+	TRACE_ENTRY();
+
+	TRACE_MGMT_DBG("FC port logo complete: %p, SESS %p", fcport, sess);
+	if (sess) {
+	TRACE_MGMT_DBG("scsi(%ld): session %p from WWN port "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		"loop_id %d)", vha->host_no, sess,
+		sess->port_name[0], sess->port_name[1],
+		sess->port_name[2], sess->port_name[3],
+		sess->port_name[4], sess->port_name[5],
+		sess->port_name[6], sess->port_name[7],
+		sess->loop_id);
+	}
+	tgt = vha->vha_tgt.tgt;
+
+	if ((tgt == NULL))
+		goto out_unlock;
+
+	if (sess) {
+		if( rc == QLA_SUCCESS) {
+			if (sess->logo_complete_pending) {
+			   sess->logo_complete_pending = 0;
+			   TRACE_MGMT_DBG("FC port logo completion event: SESS %p\n", sess);
+			   complete(&sess->async_logo_comp);
+			}
+		} else {
+			/* May want to retry logo in future */
+			TRACE_MGMT_DBG("Implict logo failed");
+			sess->plogi_ack_needed= 0;
+		}
+	}
+
+out_unlock:
 
 	TRACE_EXIT();
 	return;
