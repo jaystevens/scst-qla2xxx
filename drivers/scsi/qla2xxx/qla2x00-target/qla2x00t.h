@@ -218,7 +218,7 @@ struct q2t_sess {
 	unsigned int logout_acc_pending:1;  /* ACC to LOGO or PRLO is pending */
 	unsigned int logo_complete_pending:1;
 	unsigned int plogi_ack_needed:1;
-	unsigned int flush_complete_pending:1;
+	unsigned int no_update:1;
 	int login_state;    /* Used in the error handling of FCP_CMDs without */
 			    /* proper login session. Values defined above. */
 	struct scst_session *scst_sess;

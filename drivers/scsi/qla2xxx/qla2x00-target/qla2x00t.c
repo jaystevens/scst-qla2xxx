@@ -2602,13 +2602,20 @@ static void q2t_task_mgmt_fn_done(struct scst_mgmt_cmd *scst_mcmd)
 
 			/* Always update session after flush */
 			if (mcmd->orig_iocb.notify_entry24.status_subcode ==
-				// ELS_PLOGI && mcmd->sess->update_needed) {
-				ELS_PLOGI ) {
+				ELS_PLOGI && !(mcmd->sess->no_update)) {
 				q2t_update_sess(mcmd->sess, &mcmd->orig_iocb);
-			}
+			} 
 
-			q24_send_notify_ack(vha,
-				&mcmd->orig_iocb.notify_entry24, 0, 0, 0);
+			if (!(mcmd->sess->no_update)) {
+				TRACE_MGMT_DBG("scst_mcmd (%p), sending ACK for loop_id %d", 
+					scst_mcmd, mcmd->sess->loop_id);
+				q24_send_notify_ack(vha,
+					&mcmd->orig_iocb.notify_entry24, 0, 0, 0);
+			} else { 
+				TRACE_MGMT_DBG("scst_mcmd (%p), NOT sending ACK for loop_id %d",
+					 scst_mcmd, mcmd->sess->loop_id);
+				mcmd->sess->no_update = 0;
+			}
 
 			if ((mcmd->orig_iocb.notify_entry24.status_subcode ==
 				ELS_LOGO) ||
@@ -7237,6 +7244,7 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 	struct	qla_hw_data	*ha = vha->hw;
 	int rc;
 	struct q2t_sess *sess = NULL;
+	struct q2t_sess *sid_sess = NULL;
 	uint8_t *s_id = NULL; /* to hide compiler warnings */
 	uint8_t local_s_id[3], verify=1;
 	int loop_id = -1; /* to hide compiler warnings */
@@ -7385,8 +7393,8 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 			sess = q2t_find_sess_by_port_name(tgt, prm->inot.port_name);
 			if( sess ) {
 				q2t_block_flush(sess, Q2T_FLUSH_WITH_LOGO, (void *)&prm->inot);
-				TRACE_MGMT_DBG("Waiting for LOGO to complete : sess %p , loop_id %d", 
-					sess, sess->loop_id);
+				TRACE_MGMT_DBG("Waiting for TMF to complete : sess %p ,"
+					" loop_id %d", sess, sess->loop_id);
 				/* It will always complete ... */
 				spin_unlock_irq(&ha->hardware_lock);
 				mutex_unlock(&vha->vha_tgt.tgt_mutex);
@@ -7397,6 +7405,7 @@ static void q2t_exec_sess_work(struct q2t_tgt *tgt,
 				q2t_invalidate_sess(vha, sess);
 				TRACE_MGMT_DBG("Issue SESS Reset: sess %p", sess);
 				q2t_reset(vha, &prm->inot, Q2T_NEXUS_LOSS_SESS, false);
+				sess->plogi_ack_needed  = 1;
 				q2t_sess_logo_complete(sess->tgt->ha, sess);
 			} else {
 				TRACE_MGMT_DBG("sess %p not found", sess);
@@ -7614,6 +7623,7 @@ send2:
 
 		rc = 0;//no termination require.
 		break;
+
 
 
 	default:
@@ -9276,6 +9286,7 @@ static int q2t_find_any_matching_sess(scsi_qla_host_t *vha, void *iocb,
 
 	TRACE_MGMT_DBG("scsi(%ld): Find any matching session in session db: "
 		"loop_id %d\n", vha->host_no, loop_id);
+
 	if (sess) {
 	TRACE_MGMT_DBG("scsi(%ld): Find (WWN) (session %p from WWN port "
 		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
@@ -9305,30 +9316,32 @@ static int q2t_find_any_matching_sess(scsi_qla_host_t *vha, void *iocb,
 	} else if (sid_sess || sess) {	/* SID only, WWPN only. or Both */
 		/* Determine what to flush */
 		if (sid_sess) {
-			TRACE_MGMT_DBG("ELS FLUSH I/O - (SID only)");
-			q2t_invalidate_sess(vha, sid_sess);
 			res = 0; /* Don't send nack */
 			if (sess == NULL){
+				TRACE_MGMT_DBG("ELS FLUSH I/O - (SID only)");
+				q2t_invalidate_sess(vha, sid_sess);
 				/* Matching PID/SID and different WWPN */
 				q2t_block_flush(sid_sess, Q2T_FLUSH_ONLY, iocb);
-			} else {
-				/* Matching PID/SID and matching WWPN */
-				res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
 			}
 		}
 		if (sess) {
-			TRACE_MGMT_DBG("ELS FLUSH I/O - (WWPN only)");
 			sess->login_state = Q2T_LOGIN_STATE_NONE;
 			res = 0; /* Don't send nack */
 			/* Matching WWPN and different PID/SID */
 			if (sid_sess == NULL){
+				TRACE_MGMT_DBG("ELS FLUSH I/O - (WWPN only)");
 				sess->plogi_ack_needed  = 1;
-			   	TRACE_MGMT_DBG("Scheduling work for logo : sess %p iocb %p loop_id %d", 
+			   	TRACE_MGMT_DBG("Scheduling work for logo : sess %p iocb %p loop_id %d",
 					sess,iocb,sess->loop_id);
 				res = q2t_sched_sess_work(tgt, Q2T_SESS_WORK_LOGO, n,
 					sizeof(*n));
 			} else {
-				res = q2t_reset(vha, iocb, Q2T_NEXUS_LOSS_SESS, false);
+				TRACE_MGMT_DBG("ELS BOTH FLUSH I/O ");
+				/* A flush is pending for sid_sees, so we need to wait for it */
+				sid_sess->no_update = 1;
+				q2t_block_flush(sid_sess, Q2T_FLUSH_ONLY, iocb);
+				TRACE_MGMT_DBG("Issue SESS FLUSH: sess %p", sess);
+				q2t_block_flush(sess, Q2T_FLUSH_ONLY, iocb);
 			}
 		}
 		/* Flush is queued, so session update occurs afterwards */
