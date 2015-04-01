@@ -3952,6 +3952,10 @@ enum nexus_wait_type {
 	WAIT_LUN,
 };
 
+#ifndef FC_PORTSPEED_32GBIT
+#define FC_PORTSPEED_32GBIT		0x40
+#endif
+
 #include "qla_gbl.h"
 #include "qla_dbg.h"
 #include "qla_inline.h"
