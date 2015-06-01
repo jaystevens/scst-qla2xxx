@@ -1332,15 +1332,18 @@ qla25xx_write_risc_sema_reg(scsi_qla_host_t *vha, uint32_t data)
 static void
 qla25xx_manipulate_risc_semaphore(scsi_qla_host_t *vha)
 {
-	struct qla_hw_data *ha = vha->hw;
 	uint32_t wd32 = 0;
 	uint delta_msec = 100;
 	uint elapsed_msec = 0;
 	uint timeout_msec;
 	ulong n;
 
-	if (!IS_QLA25XX(ha) && !IS_QLA2031(ha))
+	if (vha->hw->pdev->subsystem_device != 0x0175 &&
+	    vha->hw->pdev->subsystem_device != 0x0240)
 		return;
+
+	WRT_REG_DWORD(&vha->hw->iobase->isp24.hccr, HCCRX_SET_RISC_PAUSE);
+	udelay(100);
 
 attempt:
 	timeout_msec = TIMEOUT_SEMAPHORE;
@@ -1955,6 +1958,10 @@ enable_82xx_npiv:
 			    "ISP Firmware failed checksum.\n");
 			goto failed;
 		}
+		/* Enable PUREX PASSTHRU */
+		if (ql2xsmartsan)
+			 qla24xx_smartsan_set_rdp_els_param(vha);
+
 	} else
 		goto failed;
 
@@ -2145,7 +2152,7 @@ qla24xx_update_fw_options(scsi_qla_host_t *vha)
 
 	/* Update Serial Link options. */
 	if ((le16_to_cpu(ha->fw_seriallink_options24[0]) & BIT_0) == 0)
-		return;
+		goto enable_purex;
 
 	rval = qla2x00_set_serdes_params(vha,
 	    le16_to_cpu(ha->fw_seriallink_options24[1]),
@@ -2155,6 +2162,12 @@ qla24xx_update_fw_options(scsi_qla_host_t *vha)
 		ql_log(ql_log_warn, vha, 0x0104,
 		    "Unable to update Serial Link options (%x).\n", rval);
 	}
+
+enable_purex:
+	/* Enable Purex */
+	ha->fw_options[1] |= ADD_FO1_ENABLE_PUREX_IOCB;
+
+	qla2x00_set_fw_options(vha, ha->fw_options);
 }
 
 void
@@ -3614,12 +3627,12 @@ qla2x00_configure_fabric(scsi_qla_host_t *vha)
 	}
 	vha->device_flags |= SWITCH_FOUND;
 
-	do {
-		/* FDMI support. */
-		if (ql2xfdmienable &&
-		    test_and_clear_bit(REGISTER_FDMI_NEEDED, &vha->dpc_flags))
-			qla2x00_fdmi_register(vha);
+	rval = qla2x00_get_port_name(vha, loop_id, vha->fabric_port_name, 0);
+	if (rval != QLA_SUCCESS)
+		ql_dbg(ql_dbg_disc, vha, 0x20ff,
+		    "Failed to get Fabric Port Name\n");
 
+	do {
 		/* Ensure we are logged into the SNS. */
 		if (IS_FWI2_CAPABLE(ha))
 			loop_id = NPH_SNS;
@@ -3638,6 +3651,10 @@ qla2x00_configure_fabric(scsi_qla_host_t *vha)
 			    mb[2], mb[6], mb[7]);
 			return (QLA_SUCCESS);
 		}
+
+		if (ql2xfdmienable &&
+		    test_and_clear_bit(REGISTER_FDMI_NEEDED, &vha->dpc_flags))
+			qla2x00_fdmi_register(vha);
 
 		if (test_and_clear_bit(REGISTER_FC4_NEEDED, &vha->dpc_flags)) {
 			if (qla2x00_rft_id(vha)) {
@@ -3871,7 +3888,8 @@ qla2x00_find_all_fabric_devs(scsi_qla_host_t *vha,
 			swl = NULL;
 		} else if (ql2xiidmaenable &&
 		    qla2x00_gfpn_id(vha, swl) == QLA_SUCCESS) {
-			qla2x00_gpsc(vha, swl);
+			if (ha->flags.gpsc_supported)
+				qla2x00_gpsc(vha, swl);
 		}
 
 		/* If other queries succeeded probe for FC-4 type */
@@ -6883,6 +6901,16 @@ qla82xx_restart_isp(scsi_qla_host_t *vha)
 }
 
 void
+qla83xx_update_fw_options(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	/* Enable Purex */
+	ha->fw_options[1] |= BIT_10;
+	qla2x00_set_fw_options(vha, ha->fw_options);
+}
+
+void
 qla81xx_update_fw_options(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
@@ -6893,6 +6921,7 @@ qla81xx_update_fw_options(scsi_qla_host_t *vha)
 	/* Enable ETS Burst. */
 	memset(ha->fw_options, 0, sizeof(ha->fw_options));
 	ha->fw_options[2] |= BIT_9;
+
 	qla2x00_set_fw_options(vha, ha->fw_options);
 }
 

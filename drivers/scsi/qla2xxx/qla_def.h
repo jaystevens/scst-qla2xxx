@@ -2031,18 +2031,23 @@ struct mbx_entry {
 	uint8_t port_name[WWN_SIZE];
 };
 
+
 /*
  * ISP request and response queue entry sizes
  */
 #define RESPONSE_ENTRY_SIZE	(sizeof(response_t))
 #define REQUEST_ENTRY_SIZE	(sizeof(request_t))
 
-
 /*
  * 24 bit port ID type definition.
  */
 typedef union {
 	uint32_t b24 : 24;
+
+	struct {
+		uint8_t d_id[3];
+		uint8_t rsvd_1;
+	} r;
 
 	struct {
 #ifdef __BIG_ENDIAN
@@ -2243,6 +2248,9 @@ static const char *port_state_str[] = {
 #define GFF_ID_REQ_SIZE	(16 + 4)
 #define GFF_ID_RSP_SIZE (16 + 128)
 
+#define QLA_QOS_NO_SUPP		0
+#define QLA_QOS_SUPP		1
+
 /*
  * HBA attribute types.
  */
@@ -2260,11 +2268,11 @@ static const char *port_state_str[] = {
 #define FDMI_HBA_OS_NAME_AND_VERSION		0xa
 #define FDMI_HBA_MAXIMUM_CT_PAYLOAD_LENGTH	0xb
 #define FDMI_HBA_NODE_SYMBOLIC_NAME		0xc
-#define FDMI_HBA_VENDOR_ID			0xd
+#define FDMI_HBA_VENDOR_SPECIFIC_INFO		0xd
 #define FDMI_HBA_NUM_PORTS			0xe
 #define FDMI_HBA_FABRIC_NAME			0xf
 #define FDMI_HBA_BOOT_BIOS_NAME			0x10
-#define FDMI_HBA_TYPE_VENDOR_IDENTIFIER		0xe0
+#define FDMI_HBA_VENDOR_IDENTIFIER		0xe0
 
 struct ct_fdmi_hba_attr {
 	uint16_t type;
@@ -2305,7 +2313,7 @@ struct ct_fdmiv2_hba_attr {
 		uint8_t os_version[128];
 		uint32_t max_ct_len;
 		uint8_t sym_name[256];
-		uint32_t vendor_id;
+		uint32_t vendor_specific_info;
 		uint32_t num_ports;
 		uint8_t fabric_name[WWN_SIZE];
 		uint8_t bios_name[32];
@@ -2323,6 +2331,8 @@ struct ct_fdmiv2_hba_attributes {
  */
 #define FDMI_PORT_ATTR_COUNT		6
 #define FDMIV2_PORT_ATTR_COUNT		16
+#define FDMIV2_SMARTSAN_PORT_ATTR_COUNT	24
+#define FDMI_RPRT_ATTR_COUNT		24
 #define FDMI_PORT_FC4_TYPES		0x1
 #define FDMI_PORT_SUPPORT_SPEED		0x2
 #define FDMI_PORT_CURRENT_SPEED		0x3
@@ -2339,6 +2349,14 @@ struct ct_fdmiv2_hba_attributes {
 #define FDMI_PORT_STATE			0x101
 #define FDMI_PORT_COUNT			0x102
 #define FDMI_PORT_ID			0x103
+#define FDMI_SMARTSAN_SERVICE		0xF100
+#define FDMI_SMARTSAN_GUID		0xF101
+#define FDMI_SMARTSAN_VERSION		0xF102
+#define FDMI_SMARTSAN_PROD_NAME		0xF103
+#define FDMI_SMARTSAN_PORT_INFO		0xF104
+#define FDMI_SMARTSAN_QOS_SUPPORT	0xF105
+#define FDMI_SMARTSAN_SECURITY_SUPPORT	0xF106
+#define FDMI_SMARTSAN_CONNECTED_TGT_PRT	0xF107
 
 #define FDMI_PORT_SPEED_1GB		0x1
 #define FDMI_PORT_SPEED_2GB		0x2
@@ -2384,6 +2402,47 @@ struct ct_fdmiv2_port_attributes {
 	struct ct_fdmiv2_port_attr entry[FDMIV2_PORT_ATTR_COUNT];
 };
 
+/* Smart SAN Specific RPA attr */
+struct ct_fdmiv2_smartsan_port_attr {
+	uint16_t type;
+	uint16_t len;
+	union {
+		uint8_t fc4_types[32];
+		uint32_t sup_speed;
+		uint32_t cur_speed;
+		uint32_t max_frame_size;
+		uint8_t os_dev_name[32];
+		uint8_t host_name[32];
+		uint8_t node_name[WWN_SIZE];
+		uint8_t port_name[WWN_SIZE];
+		uint8_t port_sym_name[128];
+		uint32_t port_type;
+		uint32_t port_supported_cos;
+		uint8_t fabric_name[WWN_SIZE];
+		uint8_t port_fc4_type[8];
+		uint32_t port_state;
+		uint32_t num_ports;
+		uint32_t port_id;
+		uint8_t smartsan_service[24];
+		uint8_t smartsan_guid[16];
+		uint8_t smartsan_version[24];
+		uint8_t smartsan_prod_name[16];
+		uint32_t smartsan_port_info;
+		uint32_t smartsan_qos_support;
+		uint32_t smartsan_security_support;
+		uint8_t smartsan_connected_tgt_port[32];
+		//uint8_t smartsan_connected_tgt_port[16];
+	} a;
+};
+
+/*
+ * Port Attribute Block.
+ */
+struct ct_fdmiv2_smartsan_port_attributes {
+	uint32_t count;
+	struct ct_fdmiv2_smartsan_port_attr entry[FDMIV2_SMARTSAN_PORT_ATTR_COUNT];
+};
+
 struct ct_fdmi_port_attr {
 	uint16_t type;
 	uint16_t len;
@@ -2402,6 +2461,43 @@ struct ct_fdmi_port_attributes {
 	struct ct_fdmi_port_attr entry[FDMI_PORT_ATTR_COUNT];
 };
 
+struct ct_fdmi_rprt_attr {
+	uint16_t type;
+	uint16_t len;
+	union {
+		uint8_t fc4_types[32];
+		uint32_t sup_speed;
+		uint32_t cur_speed;
+		uint32_t max_frame_size;
+		uint8_t os_dev_name[32];
+		uint8_t host_name[32];
+		uint8_t node_name[WWN_SIZE];
+		uint8_t port_name[WWN_SIZE];
+		uint8_t port_sym_name[128];
+		uint32_t port_type;
+		uint32_t port_supported_cos;
+		uint8_t fabric_name[WWN_SIZE];
+		uint8_t port_fc4_type[8];
+		uint32_t port_state;
+		uint32_t num_ports;
+		uint32_t port_id;
+		uint8_t smartsan_service[24];
+		uint8_t smartsan_guid[16];
+		uint8_t smartsan_version[24];
+		uint8_t smartsan_prod_name[16];
+		uint32_t smartsan_port_info;
+		uint32_t smartsan_qos_support;
+		uint32_t smartsan_security_support;
+		uint8_t smartsan_connected_tgt_port[32];
+		//uint8_t smartsan_connected_tgt_port[16];
+	} a;
+};
+
+struct ct_fdmi_rprt_attributes {
+	uint32_t count;
+	struct ct_fdmi_rprt_attr entry[FDMI_RPRT_ATTR_COUNT];
+};
+
 /* FDMI definitions. */
 #define GRHL_CMD	0x100
 #define GHAT_CMD	0x101
@@ -2412,10 +2508,13 @@ struct ct_fdmi_port_attributes {
 #define RHBA_RSP_SIZE	16
 
 #define RHAT_CMD	0x201
+
 #define RPRT_CMD	0x210
+#define RPRT_RSP_SIZE	24
 
 #define RPA_CMD		0x211
 #define RPA_RSP_SIZE	16
+#define SMARTSAN_RPA_RSP_SIZE	24
 
 #define DHBA_CMD	0x300
 #define DHBA_REQ_SIZE	(16 + 8)
@@ -2515,6 +2614,17 @@ struct ct_sns_req {
 			uint8_t port_name[8];
 			struct ct_fdmiv2_port_attributes attrs;
 		} rpa2;
+
+		struct {
+			uint8_t port_name[8];
+			struct ct_fdmiv2_smartsan_port_attributes attrs;
+		} smartsan_rpa2;
+
+		struct {
+			uint8_t hba_identifier[8];
+			uint8_t port_name[8];
+			struct ct_fdmi_rprt_attributes attrs;
+		} rprt;
 
 		struct {
 			uint8_t port_name[8];
@@ -2827,6 +2937,11 @@ enum qla_work_type {
 	QLA_EVT_AENFX,
 };
 
+/* Securit Support Tier */
+#define	QLA_SEC_NOT_SUPP	0
+#define	QLA_SEC_SUPP_TIER_1	1
+#define	QLA_SEC_SUPP_TIER_2	2
+#define	QLA_SEC_SUPP_TIER_3	3
 
 struct qla_work_evt {
 	struct list_head	list;
@@ -3133,6 +3248,88 @@ typedef struct qla_thread {
 
 #endif  /* QLA_RSPQ_NOLOCK */
 
+struct rdp_req_payload {
+	uint32_t	els_request;
+	uint32_t	desc_list_len;
+
+	/* NPIV descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint8_t  reserved;
+		uint8_t  nport_id[3];
+	} npiv_desc;
+};
+
+struct rdp_rsp_payload {
+	uint32_t cmd;
+	uint32_t desc_list_len;
+
+	/* LS Request Info descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint32_t req_payload_word_0;
+	} ls_req_info_desc;
+
+	/* LS Request Info descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint32_t req_payload_word_0;
+	} ls_req_info_desc2;
+
+	/* SFP diagnostic param descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint16_t temperature;
+		uint16_t vcc;
+		uint16_t tx_bias;
+		uint16_t tx_power;
+		uint16_t rx_power;
+		uint16_t sfp_flags;
+	} sfp_diag_desc;
+
+	/* Port Speed Descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint16_t speed_capab;
+		uint16_t operating_speed;
+	} port_speed_desc;
+
+	/* Link Error Status Descriptor */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint32_t link_fail_cnt;
+		uint32_t loss_sync_cnt;
+		uint32_t loss_sig_cnt;
+		uint32_t prim_seq_err_cnt;
+		uint32_t inval_xmit_word_cnt;
+		uint32_t inval_crc_cnt;
+		uint8_t  pn_port_phy_type;
+		uint8_t  reserved[3];
+	} ls_err_desc;
+
+	/* Port name description with diag param */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint8_t WWNN[WWN_SIZE];
+		uint8_t WWPN[WWN_SIZE];
+	} port_name_diag_desc;
+
+	/* Port Name desc for Direct attached Fx_Port or Nx_Port */
+	struct {
+		uint32_t desc_tag;
+		uint32_t desc_len;
+		uint8_t WWNN[WWN_SIZE];
+		uint8_t WWPN[WWN_SIZE];
+	} port_name_direct_desc;
+};
+
 /*
  * Qlogic host adapter specific data structure.
 */
@@ -3182,7 +3379,8 @@ struct qla_hw_data {
 		/* 33 bits */
 		uint32_t        fawwpn_enabled:1;
 		uint32_t	ql2x_prli_ctl	:1;
-
+		uint32_t	qos_supported:1;
+		/* 30 bits */
 	} flags;
 
 	/* This spinlock is used to protect "io transactions", you must
@@ -3381,6 +3579,7 @@ struct qla_hw_data {
     (((ha)->fw_attributes_h << 16 | (ha)->fw_attributes) & BIT_22))
 #define IS_SHADOW_REG_CAPABLE(ha)	(IS_QLA27XX(ha))
 #define IS_DPORT_CAPABLE(ha) (IS_QLA83XX(ha) || IS_QLA27XX(ha))
+#define IS_FAWWN_CAPABLE(ha)	(IS_QLA83XX(ha) || IS_QLA27XX(ha))
 
 	/* HBA serial number */
 	uint8_t		serial0;
@@ -3417,6 +3616,7 @@ struct qla_hw_data {
 
 #define SFP_DEV_SIZE    256
 #define SFP_BLOCK_SIZE  64
+#define SFP_RTDI_OFFSET	96
 	void		*sfp_data;
 	dma_addr_t	sfp_data_dma;
 
@@ -3508,6 +3708,7 @@ struct qla_hw_data {
 	uint8_t		mpi_version[3];
 	uint32_t	mpi_capabilities;
 	uint8_t		phy_version[3];
+	uint8_t		pep_version[3];
 
 	/* Firmware dump template */
 	void		*fw_dump_template;
@@ -3803,7 +4004,7 @@ typedef struct scsi_qla_host {
 #define FX00_CRITEMP_RECOVERY	26
 #define FX00_HOST_INFO_RESEND	27
 #define FX00_FW_INFO_UPDATE	28
-
+#define PROCESS_PUREX_IOCB	29
 	uint32_t	device_flags;
 #define SWITCH_FOUND		BIT_0
 #define DFLG_NO_CABLE		BIT_1
@@ -3836,6 +4037,7 @@ typedef struct scsi_qla_host {
 	uint8_t		node_name[WWN_SIZE];
 	uint8_t		port_name[WWN_SIZE];
 	uint8_t		fabric_node_name[WWN_SIZE];
+	uint8_t		fabric_port_name[WWN_SIZE];
 
 	uint16_t	fcoe_vlan_id;
 	uint16_t	fcoe_fcf_idx;
@@ -3854,11 +4056,13 @@ typedef struct scsi_qla_host {
 #define VP_SCR_NEEDED		4	/* State Change Request registration */
 #define VP_CONFIG_OK		5	/* Flag to cfg VP, if FW is ready */
 	atomic_t 		vp_state;
+#define PHYSICAL_PORT		0
+#define NPIV_PORT		1
+#define SRIOV_PORT		2
 #define VP_OFFLINE		0
 #define VP_ACTIVE		1
 #define VP_FAILED		2
-// #define VP_DISABLE		3
-	uint16_t	vp_err_state;
+	uint16_t 	vp_err_state;
 	uint16_t	vp_prev_err_state;
 #define VP_ERR_UNKWN		0
 #define VP_ERR_PORTDWN		1
@@ -3874,6 +4078,7 @@ typedef struct scsi_qla_host {
 	struct qla_statistics qla_stats;
 	struct bidi_statistics bidi_stats;
 
+	int	security_supp;
 	atomic_t	vref_count;
 	struct qla8044_reset_template reset_tmplt;
 
@@ -3882,6 +4087,8 @@ typedef struct scsi_qla_host {
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
 	struct scsi_qlt_host vha_tgt;
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
+	/* PUREX IOCB data area */
+	void *purex_data;
 } scsi_qla_host_t;
 
 #ifdef CONFIG_SCSI_QLA2XXX_TARGET
@@ -3966,6 +4173,8 @@ struct qla_tgt_vp_map {
 #define CMD_SP(Cmnd)           ((Cmnd)->SCp.ptr)
 
 #define QLA_SG_ALL     1024
+
+extern int ql2xsmartsan;
 
 enum nexus_wait_type {
 	WAIT_HOST = 0,

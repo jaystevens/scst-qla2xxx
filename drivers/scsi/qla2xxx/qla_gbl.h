@@ -32,6 +32,7 @@ extern int qla81xx_nvram_config(struct scsi_qla_host *);
 extern void qla2x00_update_fw_options(struct scsi_qla_host *);
 extern void qla24xx_update_fw_options(scsi_qla_host_t *);
 extern void qla81xx_update_fw_options(scsi_qla_host_t *);
+extern void qla83xx_update_fw_options(scsi_qla_host_t *);
 extern int qla2x00_load_risc(struct scsi_qla_host *, uint32_t *);
 extern int qla24xx_load_risc(scsi_qla_host_t *, uint32_t *);
 extern int qla81xx_load_risc(scsi_qla_host_t *, uint32_t *);
@@ -409,6 +410,9 @@ qla82xx_set_driver_version(scsi_qla_host_t *, char *);
 extern int
 qla25xx_set_driver_version(scsi_qla_host_t *, char *);
 
+extern void
+qla24xx_smartsan_set_rdp_els_param(scsi_qla_host_t *);
+
 extern int
 qla2x00_read_sfp(scsi_qla_host_t *, dma_addr_t, uint8_t *,
 	uint16_t, uint16_t, uint16_t, uint16_t);
@@ -542,6 +546,7 @@ extern uint8_t *qla25xx_read_optrom_data(struct scsi_qla_host *, uint8_t *,
 extern uint8_t *qla8044_read_optrom_data(struct scsi_qla_host *,
     uint8_t *, uint32_t, uint32_t);
 extern void qla8044_watchdog(struct scsi_qla_host *vha);
+extern int qla24xx_process_purex_iocb(scsi_qla_host_t *, void *);
 
 extern int qla2x00_get_flash_version(scsi_qla_host_t *, void *);
 extern int qla24xx_get_flash_version(scsi_qla_host_t *, void *);
@@ -573,8 +578,6 @@ extern const void *qla27xx_fwdt_template_default(void);
 extern ulong qla27xx_fwdt_template_default_size(void);
 
 extern void qla2x00_dump_regs(scsi_qla_host_t *);
-extern void qla2x00_dump_buffer(uint8_t *, uint32_t);
-extern void qla2x00_dump_buffer_zipped(uint8_t *, uint32_t);
 extern void qla2xxx_dump_post_process(scsi_qla_host_t *, int);
 extern void ql_dump_regs(uint32_t, scsi_qla_host_t *, int32_t);
 extern void ql_dump_buffer(uint32_t, scsi_qla_host_t *, int32_t,

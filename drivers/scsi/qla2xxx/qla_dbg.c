@@ -17,14 +17,14 @@
  * | Mailbox commands             |       0x118b       | 0x1019		|
  * |                              |                    | 0x1115-0x1116	|
  * |                              |                    | 0x111a-0x111b	|
- * | Device Discovery             |       0x2022       | 0x2099-0x20a4  |
+ * | Device Discovery             |       0x20fe       |                |
  * | Queue Command and IO tracing |       0x3053       | 0x3006-0x300b  |
  * |				  |		       | 0x3027-0x3028  |
  * |                              |                    | 0x304b-0x304c  |
  * |                              |                    | 0x3031         |
  * | DPC Thread                   |       0x4027       | 0x4002,0x4013  |
  * |                              |                    | 0x401e-0x401f  |
- * | Async Events                 |       0x5087       | 0x502b-0x502f  |
+ * | Async Events                 |       0x5088       | 0x502b-0x502f  |
  * |                              |                    | 0x503d,0x5044  |
  * |				  | 		       | 0x5047,0x505f  |
  * |				  | 		       | 0x5074,0x5075  |

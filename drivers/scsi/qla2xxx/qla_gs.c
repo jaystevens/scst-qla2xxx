@@ -1167,7 +1167,7 @@ qla2x00_mgmt_svr_login(scsi_qla_host_t *vha)
 			    "Failed management_server login: loopid=%x "
 			    "rval=%d\n", vha->mgmt_svr_loop_id, rval);
 		else
-			ql_dbg(ql_dbg_disc, vha, 0x2024,
+			ql_dbg(ql_dbg_disc, vha, 0x2099,
 			    "Failed management_server login: loopid=%x "
 			    "mb[0]=%x mb[1]=%x mb[2]=%x mb[6]=%x mb[7]=%x.\n",
 			    vha->mgmt_svr_loop_id, mb[0], mb[1], mb[2], mb[6],
@@ -1505,6 +1505,425 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 		ql_dbg(ql_dbg_disc, vha, 0x2035,
 		    "RHBA exiting normally.\n");
 	}
+	return rval;
+}
+
+static int
+qla2x00_fdmi_rprt(scsi_qla_host_t *vha, int option)
+{
+	int rval, alen, count;
+	uint32_t size;
+	struct ct_sns_req *ct_req;
+	struct ct_sns_rsp *ct_rsp;
+	void *entries;
+	ms_iocb_entry_t *ms_pkt;
+	struct ct_fdmi_rprt_attr *eiter;
+	struct qla_hw_data *ha = vha->hw;
+	struct init_cb_24xx *icb24 = (struct init_cb_24xx *)ha->init_cb;
+	struct new_utsname *p_sysid = NULL;
+	struct scsi_qla_host *base_vha = pci_get_drvdata(vha->hw->pdev);
+
+	/* Request size adjusted after CT preparation */
+	ms_pkt = ha->isp_ops->prep_ms_fdmi_iocb(vha, 0, RPRT_RSP_SIZE);
+
+	/* Prepare CT request */
+	ct_req = qla2x00_prep_ct_fdmi_req(&ha->ct_sns->p.req, RPRT_CMD,
+	    RPRT_RSP_SIZE);
+	ct_rsp = &ha->ct_sns->p.rsp;
+
+
+	/* Prepare FDMI command arguments -- attribute block, attributes. */
+	memcpy(ct_req->req.rprt.hba_identifier, base_vha->port_name, WWN_SIZE);
+	size = WWN_SIZE;
+
+	memcpy(ct_req->req.rprt.port_name, vha->port_name, WWN_SIZE);
+	size += WWN_SIZE + 4;
+
+	if (option == 2 && ql2xsmartsan)
+		count = FDMIV2_SMARTSAN_PORT_ATTR_COUNT - 1;
+	else if (option == 1 || !ql2xsmartsan)
+		count = FDMIV2_PORT_ATTR_COUNT;
+	else
+		count = FDMI_PORT_ATTR_COUNT;
+
+	ct_req->req.rprt.attrs.count =
+	    __constant_cpu_to_be32(count);
+	entries = ct_req->req.rprt.hba_identifier;
+
+	/* FC4 types. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPES);
+	eiter->len = __constant_cpu_to_be16(4 + 32);
+	eiter->a.fc4_types[2] = 0x01;
+	size += 4 + 32;
+
+	ql_dbg(ql_dbg_disc, vha, 0x2024,
+	    "FC4_TYPES=%02x %02x.\n",
+	    eiter->a.fc4_types[2],
+	    eiter->a.fc4_types[1]);
+
+	/* Supported speed. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	if (IS_CNA_CAPABLE(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_10GB);
+	else if (IS_QLA27XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_32GB|
+		    FDMI_PORT_SPEED_16GB|
+		    FDMI_PORT_SPEED_8GB);
+	else if (IS_QLA2031(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_16GB|
+		    FDMI_PORT_SPEED_8GB|
+		    FDMI_PORT_SPEED_4GB);
+	else if (IS_QLA25XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_8GB|
+		    FDMI_PORT_SPEED_4GB|
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else if (IS_QLA24XX_TYPE(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_4GB|
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else if (IS_QLA23XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_1GB);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209a,
+	    "Supported_Speed=%x.\n", __constant_cpu_to_be32(eiter->a.sup_speed));
+
+	/* Current speed. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	switch (ha->link_data_rate) {
+	case PORT_SPEED_1GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_1GB);
+		break;
+	case PORT_SPEED_2GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_2GB);
+		break;
+	case PORT_SPEED_4GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_4GB);
+		break;
+	case PORT_SPEED_8GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_8GB);
+		break;
+	case PORT_SPEED_10GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_10GB);
+		break;
+	case PORT_SPEED_16GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_16GB);
+		break;
+	case PORT_SPEED_32GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_32GB);
+		break;
+	default:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
+		break;
+	}
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20a1,
+	    "Current_Speed=%x.\n", __constant_cpu_to_be32(eiter->a.cur_speed));
+
+	/* Max frame size. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->a.max_frame_size = IS_FWI2_CAPABLE(ha) ?
+	    le16_to_cpu(icb24->frame_payload_size) :
+	    le16_to_cpu(ha->init_cb->frame_payload_size);
+	eiter->a.max_frame_size = cpu_to_be32(eiter->a.max_frame_size);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20a2,
+	    "Max_Frame_Size=%x.\n", cpu_to_be32(eiter->a.max_frame_size));
+
+	/* OS device name. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
+	snprintf(eiter->a.os_dev_name, sizeof(eiter->a.os_dev_name),
+	    "%s:host%lu", QLA2XXX_DRIVER_NAME, vha->host_no);
+	alen = strlen(eiter->a.os_dev_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20a3,
+	    "OS_Device_Name=%s.\n", eiter->a.os_dev_name);
+
+	/* Hostname. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
+	p_sysid = utsname();
+	if (p_sysid) {
+		if (!strncmp(p_sysid->nodename, "(none)", 6))
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", "Linux");
+		else
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", p_sysid->nodename);
+	} else {
+		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+		    "%s", fc_host_system_hostname(vha->host));
+	}
+	alen = strlen(eiter->a.host_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209b,
+	    "HostName=%s.\n", eiter->a.host_name);
+
+	if (option == 0)
+		goto send_pkt;
+
+	/* Node Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NODE_NAME);
+	memcpy(eiter->a.node_name, vha->node_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209c,
+	    "Node Name = %016llx.\n", wwn_to_u64(eiter->a.node_name));
+
+	/* Port Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NAME);
+	memcpy(eiter->a.port_name, vha->port_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209d,
+	    "Port Name = %016llx.\n", wwn_to_u64(eiter->a.port_name));
+
+	/* Port Symbolic Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SYM_NAME);
+	qla2x00_get_sym_node_name(vha, eiter->a.port_sym_name,
+	    sizeof(eiter->a.port_sym_name));
+	alen = strlen(eiter->a.port_sym_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209e,
+	    "port symbolic name = %s\n", eiter->a.port_sym_name);
+
+	/* Port Type */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_TYPE);
+	eiter->a.port_type = __constant_cpu_to_be32(NS_NX_PORT_TYPE);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x209f,
+	    "Port Type = %x.\n", cpu_to_be32(eiter->a.port_type));
+
+	/* Class of Service  */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPP_COS);
+	eiter->a.port_supported_cos = __constant_cpu_to_be32(FC_CLASS_3);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20a0,
+	    "Supported COS = %08x\n", eiter->a.port_supported_cos);
+
+	/* Port Fabric Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FABRIC_NAME);
+	memcpy(eiter->a.fabric_name, vha->fabric_node_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20a4,
+	    "Fabric Name = %016llx.\n", wwn_to_u64(eiter->a.fabric_name));
+
+	/* FC4_type */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPE);
+	eiter->a.port_fc4_type[0] = 0;
+	eiter->a.port_fc4_type[1] = 0;
+	eiter->a.port_fc4_type[2] = 1;
+	eiter->a.port_fc4_type[3] = 0;
+	eiter->len = cpu_to_be16(4 + 32);
+	size += 4 + 32;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20cf,
+	    "Port Active FC4 Type = %02x %02x.\n",
+	    eiter->a.port_fc4_type[2], eiter->a.port_fc4_type[1]);
+
+	/* Port State */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_STATE);
+	eiter->a.port_state = __constant_cpu_to_be32(1);;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d0,
+	    "Port State = %x.\n", __constant_cpu_to_be32(eiter->a.port_state));
+
+	/* Number of Ports */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_COUNT);
+	eiter->a.num_ports = __constant_cpu_to_be32(1);;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d1,
+	    "Number of ports = %x.\n", __constant_cpu_to_be32(eiter->a.num_ports));
+
+	/* Port Id */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_ID);
+	eiter->a.port_id = cpu_to_be32(vha->d_id.b24);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d2,
+	    "Port Id = %x.\n", cpu_to_be32(eiter->a.port_id));
+
+	if (option == 1 || !ql2xsmartsan)
+		goto send_pkt;
+
+	/* Smart SAN Service Category (Populate Smart SAN Initiator)*/
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_SERVICE);
+	strlcpy(eiter->a.smartsan_service, "Smart SAN Initiator", 24);
+	eiter->len = cpu_to_be16(4 + 24);
+	size += 4 + 24;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d3,
+	    "Smart SAN Service Category = %s.\n", eiter->a.smartsan_service);
+
+	/* Smart SAN GUID. (Use NWWN+PWWN) */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_GUID);
+	memcpy(eiter->a.smartsan_guid, vha->node_name, WWN_SIZE);
+	memcpy(eiter->a.smartsan_guid + WWN_SIZE, vha->port_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE + WWN_SIZE);
+	size += 4 + WWN_SIZE + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f6,
+	    "Smart SAN GUID = %02x%02x%02x%02x%02x%02x%02x%02x-"
+	    "%02x%02x%02x%02x%02x%02x%02x%02x\n", eiter->a.smartsan_guid[0],
+	    eiter->a.smartsan_guid[1], eiter->a.smartsan_guid[2], eiter->a.smartsan_guid[3],
+	    eiter->a.smartsan_guid[4], eiter->a.smartsan_guid[5], eiter->a.smartsan_guid[6],
+	    eiter->a.smartsan_guid[7], eiter->a.smartsan_guid[8], eiter->a.smartsan_guid[9],
+	    eiter->a.smartsan_guid[10], eiter->a.smartsan_guid[11], eiter->a.smartsan_guid[12],
+	    eiter->a.smartsan_guid[13], eiter->a.smartsan_guid[14], eiter->a.smartsan_guid[15]);
+
+	/* Smart SAN Version (populate "Smart SAN Version 1.0") */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_VERSION);
+	sprintf(eiter->a.smartsan_version, "%s", "Smart SAN Version 1.0");
+	eiter->len = cpu_to_be16(4 + 24);
+	size += 4 + 24;
+	alen = strlen(eiter->a.smartsan_version);
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d5,
+	    "Smart SAN Version = %s\n", eiter->a.smartsan_version);
+
+	/* SMARTSAN Product Name (Specify Adapter Model No) */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_PROD_NAME);
+	sprintf(eiter->a.smartsan_prod_name, "ISP%04x", ha->pdev->device);
+	alen = strlen(eiter->a.smartsan_prod_name);
+	eiter->len = cpu_to_be16(4 + 16);
+	size += 4 + 16;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d6,
+	    "Smart SAN Prod Name = %s\n", eiter->a.smartsan_prod_name);
+
+	/* Smart SAN Port Info.. Specify 01-Physical, 02-NPIV, 03-SRIOV */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_PORT_INFO);
+	eiter->a.smartsan_port_info = cpu_to_be32(1);
+	if (vha->vp_idx != 0)
+		eiter->a.smartsan_port_info = cpu_to_be32(2);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d7,
+	    "Smart SAN Port Info = %x\n", eiter->a.smartsan_port_info);
+
+	/* Smart SAN QoS Support */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_QOS_SUPPORT);
+	eiter->a.smartsan_qos_support = QLA_QOS_NO_SUPP;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d8,
+	    "Smart SAN QoS Support = %d\n", eiter->a.smartsan_qos_support);
+
+	/* Smart SAN Security Supporrt */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_SECURITY_SUPPORT);
+	eiter->a.smartsan_security_support = 0;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d9,
+	    "Smart SAN Security Support = %d\n", eiter->a.smartsan_security_support);
+
+send_pkt:
+	/* Update MS request size. */
+	qla2x00_update_ms_fdmi_iocb(vha, size + 16);
+
+	ql_dbg(ql_dbg_disc, vha, 0x20da,
+	    "RPRT portname %016llx, size = %d.\n",
+	    wwn_to_u64(ct_req->req.rprt.port_name), size);
+	ql_dump_buffer(ql_dbg_disc + ql_dbg_buffer, vha, 0x20dd,
+	    entries, size);
+
+	/* Execute MS IOCB */
+	rval = qla2x00_issue_iocb(vha, ha->ms_iocb, ha->ms_iocb_dma,
+	    sizeof(ms_iocb_entry_t));
+	if (rval != QLA_SUCCESS) {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_disc, vha, 0x20db,
+		    "RPRT issue IOCB failed (%d).\n", rval);
+	} else if (qla2x00_chk_ms_status(vha, ms_pkt, ct_rsp, "RPRT") !=
+	    QLA_SUCCESS) {
+		rval = QLA_FUNCTION_FAILED;
+		if (ct_rsp->header.reason_code == CT_REASON_CANNOT_PERFORM &&
+		    ct_rsp->header.explanation_code ==
+		    CT_EXPL_ALREADY_REGISTERED) {
+			ql_dbg(ql_dbg_disc, vha, 0x20dc,
+			    "RPRT already registered.\n");
+			rval = QLA_ALREADY_REGISTERED;
+		} else {
+			ql_dbg(ql_dbg_disc, vha, 0x20de,
+			    "RPRT failed, CT Reason code: 0x%x, CT Explanation 0x%x\n",
+			    ct_rsp->header.reason_code,
+			    ct_rsp->header.explanation_code);
+		}
+	} else {
+		ql_dbg(ql_dbg_disc, vha, 0x20df,
+		    "RPRT exiting normally.\n");
+	}
 
 	return rval;
 }
@@ -1533,6 +1952,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 	/* Prepare common MS IOCB */
 	/*   Request size adjusted after CT preparation */
 	ms_pkt = ha->isp_ops->prep_ms_fdmi_iocb(vha, 0, RPA_RSP_SIZE);
+
 
 	/* Prepare CT request */
 	ct_req = qla2x00_prep_ct_fdmi_req(&ha->ct_sns->p.req, RPA_CMD,
@@ -1598,7 +2018,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x203a,
-	    "Supported_Speed=%x.\n", eiter->a.sup_speed);
+	    "Supported_Speed=%x.\n", __constant_cpu_to_be32(eiter->a.sup_speed));
 
 	/* Current speed. */
 	eiter = entries + size;
@@ -1641,7 +2061,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x203b,
-	    "Current_Speed=%x.\n", eiter->a.cur_speed);
+	    "Current_Speed=%x.\n", __constant_cpu_to_be32(eiter->a.cur_speed));
 
 	/* Max frame size. */
 	eiter = entries + size;
@@ -1654,7 +2074,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x203c,
-	    "Max_Frame_Size=%x.\n", eiter->a.max_frame_size);
+	    "Max_Frame_Size=%x.\n", cpu_to_be32(eiter->a.max_frame_size));
 
 	/* OS device name. */
 	eiter = entries + size;
@@ -1674,8 +2094,12 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
 	p_sysid = utsname();
 	if (p_sysid) {
-		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
-		    "%s", p_sysid->nodename);
+		if (!strncmp(p_sysid->nodename, "(none)", 6))
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", "Linux");
+		else
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", p_sysid->nodename);
 	} else {
 		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
 		    "%s", fc_host_system_hostname(vha->host));
@@ -1943,15 +2367,17 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 	ql_dbg(ql_dbg_disc, vha, 0x20b0,
 	    "Symbolic Name = %s.\n", eiter->a.sym_name);
 
-	/* Vendor Id */
+	/* Vendor Specific information */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_VENDOR_ID);
-	eiter->a.vendor_id = __constant_cpu_to_be32(0x1077);
+	eiter->type = __constant_cpu_to_be16(FDMI_HBA_VENDOR_SPECIFIC_INFO);
+	eiter->a.vendor_specific_info =
+	    __constant_cpu_to_be32(PCI_VENDOR_ID_QLOGIC);
 	eiter->len = __constant_cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x2022,
-	    "Vendor Id = %x.\n", eiter->a.vendor_id);
+	    "Vendor Specific Info = 0x%x.\n",
+	    __constant_cpu_to_be32(eiter->a.vendor_specific_info));
 
 	/* Num Ports */
 	eiter = entries + size;
@@ -1961,7 +2387,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20b2,
-	    "Port Num = %x.\n", eiter->a.num_ports);
+	    "Port Num = %x.\n", __constant_cpu_to_be32(eiter->a.num_ports));
 
 	/* Fabric Name */
 	eiter = entries + size;
@@ -1988,7 +2414,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Vendor Identifier */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_TYPE_VENDOR_IDENTIFIER);
+	eiter->type = __constant_cpu_to_be16(FDMI_HBA_VENDOR_IDENTIFIER);
 	snprintf(eiter->a.vendor_indentifer, sizeof(eiter->a.vendor_indentifer),
 	    "%s", "QLGC");
 	alen = strlen(eiter->a.vendor_indentifer);
@@ -2089,6 +2515,415 @@ qla2x00_fdmi_dhba(scsi_qla_host_t *vha)
 	return rval;
 }
 
+static int
+qla2x00_fdmiv2_smartsan_rpa(scsi_qla_host_t *vha)
+{
+	int rval, alen;
+	uint32_t size;
+	struct qla_hw_data *ha = vha->hw;
+	ms_iocb_entry_t *ms_pkt;
+	struct ct_sns_req *ct_req;
+	struct ct_sns_rsp *ct_rsp;
+	void *entries;
+	struct ct_fdmiv2_smartsan_port_attr *eiter;
+	struct init_cb_24xx *icb24 = (struct init_cb_24xx *)ha->init_cb;
+	struct new_utsname *p_sysid = NULL;
+
+	/* Issue RPA */
+	/* Prepare common MS IOCB */
+	/*   Request size adjusted after CT preparation */
+	ms_pkt = ha->isp_ops->prep_ms_fdmi_iocb(vha, 0, SMARTSAN_RPA_RSP_SIZE);
+
+	/* Prepare CT request */
+	ct_req = qla2x00_prep_ct_fdmi_req(&ha->ct_sns->p.req, RPA_CMD,
+	    SMARTSAN_RPA_RSP_SIZE);
+	ct_rsp = &ha->ct_sns->p.rsp;
+
+	/* Prepare FDMI command arguments -- attribute block, attributes. */
+	memcpy(ct_req->req.smartsan_rpa2.port_name, vha->port_name, WWN_SIZE);
+	size = WWN_SIZE + 4;
+
+	/* Attributes */
+	ct_req->req.rpa2.attrs.count =
+	    __constant_cpu_to_be32(FDMIV2_SMARTSAN_PORT_ATTR_COUNT - 1);
+	entries = ct_req->req.rpa2.port_name;
+
+	/* FC4 types. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPES);
+	eiter->len = __constant_cpu_to_be16(4 + 32);
+	eiter->a.fc4_types[2] = 0x01;
+	size += 4 + 32;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e3,
+	    "FC4_TYPES=%02x %02x.\n",
+	    eiter->a.fc4_types[2],
+	    eiter->a.fc4_types[1]);
+
+	/* Supported speed. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	if (IS_CNA_CAPABLE(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_10GB);
+	else if (IS_QLA27XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_32GB|
+		    FDMI_PORT_SPEED_16GB|
+		    FDMI_PORT_SPEED_8GB);
+	else if (IS_QLA2031(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_16GB|
+		    FDMI_PORT_SPEED_8GB|
+		    FDMI_PORT_SPEED_4GB);
+	else if (IS_QLA25XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_8GB|
+		    FDMI_PORT_SPEED_4GB|
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else if (IS_QLA24XX_TYPE(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_4GB|
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else if (IS_QLA23XX(ha))
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_2GB|
+		    FDMI_PORT_SPEED_1GB);
+	else
+		eiter->a.sup_speed = __constant_cpu_to_be32(
+		    FDMI_PORT_SPEED_1GB);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e4,
+	    "Supported Port Speed = %x.\n", cpu_to_be32(eiter->a.sup_speed));
+
+	/* Current speed. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	switch (ha->link_data_rate) {
+	case PORT_SPEED_1GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_1GB);
+		break;
+	case PORT_SPEED_2GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_2GB);
+		break;
+	case PORT_SPEED_4GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_4GB);
+		break;
+	case PORT_SPEED_8GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_8GB);
+		break;
+	case PORT_SPEED_10GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_10GB);
+		break;
+	case PORT_SPEED_16GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_16GB);
+		break;
+	case PORT_SPEED_32GB:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_32GB);
+		break;
+	default:
+		eiter->a.cur_speed =
+		    __constant_cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
+		break;
+	}
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20bc, "Current_Speed = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.cur_speed));
+
+	/* Max frame size. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
+	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->a.max_frame_size = IS_FWI2_CAPABLE(ha) ?
+	    le16_to_cpu(icb24->frame_payload_size) :
+	    le16_to_cpu(ha->init_cb->frame_payload_size);
+	eiter->a.max_frame_size = cpu_to_be32(eiter->a.max_frame_size);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e5,
+	    "Max_Frame_Size = %x.\n", eiter->a.max_frame_size);
+
+	/* OS device name. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
+	snprintf(eiter->a.os_dev_name, sizeof(eiter->a.os_dev_name),
+	    "%s:host%lu", QLA2XXX_DRIVER_NAME, vha->host_no);
+	alen = strlen(eiter->a.os_dev_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e6,
+	    "OS_Device_Name = %s.\n", eiter->a.os_dev_name);
+
+	/* Hostname. */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
+	p_sysid = utsname();
+	if (p_sysid) {
+		if (!strncmp(p_sysid->nodename, "(none)", 6))
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", "Linux");
+		else
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", p_sysid->nodename);
+	} else {
+		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+		    "%s", fc_host_system_hostname(vha->host));
+	}
+	alen = strlen(eiter->a.host_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e7,
+	    "HostName = %s.\n", eiter->a.host_name);
+
+	/* Node Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NODE_NAME);
+	memcpy(eiter->a.node_name, vha->node_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e8,
+	    "Node Name = %016llx.\n", wwn_to_u64(eiter->a.node_name));
+
+	/* Port Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NAME);
+	memcpy(eiter->a.port_name, vha->port_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20fd,
+	    "Port Name = %016llx.\n", wwn_to_u64(eiter->a.port_name));
+
+	/* Port Symbolic Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SYM_NAME);
+	qla2x00_get_sym_node_name(vha, eiter->a.port_sym_name,
+	    sizeof(eiter->a.port_sym_name));
+	alen = strlen(eiter->a.port_sym_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20ea,
+	    "port symbolic name = %s\n", eiter->a.port_sym_name);
+
+	/* Port Type */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_TYPE);
+	eiter->a.port_type = __constant_cpu_to_be32(NS_NX_PORT_TYPE);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20eb, "Port Type = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.port_type));
+
+	/* Class of Service  */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPP_COS);
+	eiter->a.port_supported_cos = __constant_cpu_to_be32(FC_CLASS_3);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20ec,
+	    "Supported COS = %08x\n", __constant_cpu_to_be32(eiter->a.port_supported_cos));
+
+	/* Port Fabric Name */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FABRIC_NAME);
+	memcpy(eiter->a.fabric_name, vha->fabric_node_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
+	size += 4 + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20ed,
+	    "Fabric Name = %016llx.\n", wwn_to_u64(eiter->a.fabric_name));
+
+	/* FC4_type */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPE);
+	eiter->a.port_fc4_type[0] = 0;
+	eiter->a.port_fc4_type[1] = 0;
+	eiter->a.port_fc4_type[2] = 1;
+	eiter->a.port_fc4_type[3] = 0;
+	eiter->len = cpu_to_be16(4 + 32);
+	size += 4 + 32;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20ef,
+	    "Port Active FC4 Type = %02x %02x.\n",
+	    eiter->a.port_fc4_type[2], eiter->a.port_fc4_type[1]);
+
+	/* Port State */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_STATE);
+	eiter->a.port_state = __constant_cpu_to_be32(1);;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f7, "Port State = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.port_state));
+
+	/* Number of Ports */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_COUNT);
+	eiter->a.num_ports = __constant_cpu_to_be32(1);;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20e2, "Number of ports = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.num_ports));
+
+	/* Port Id */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_PORT_ID);
+	eiter->a.port_id = cpu_to_be32(vha->d_id.b24);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f0,
+	    "Port Id = %x.\n", cpu_to_be32(eiter->a.port_id));
+
+	/* Smart SAN Service Category (Populate Smart SAN Initiator)*/
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_SERVICE);
+	strlcpy(eiter->a.smartsan_service, "Smart SAN Initiator", 24);
+	eiter->len = cpu_to_be16(4 + 24);
+	size += 4 + 24;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20ee,
+	    "Smart SAN Service Category: %s.\n", eiter->a.smartsan_service);
+
+	/* Smart SAN GUID. (Use NWWN+PWWN) */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_GUID);
+	memcpy(eiter->a.smartsan_guid, vha->node_name, WWN_SIZE);
+	memcpy(eiter->a.smartsan_guid + WWN_SIZE, vha->port_name, WWN_SIZE);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE + WWN_SIZE);
+	size += 4 + WWN_SIZE + WWN_SIZE;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20d4,
+	    "Smart SAN GUID: %02x%02x%02x%02x%02x%02x%02x%02x-"
+	    "%02x%02x%02x%02x%02x%02x%02x%02x\n", eiter->a.smartsan_guid[0],
+	    eiter->a.smartsan_guid[1], eiter->a.smartsan_guid[2],
+	    eiter->a.smartsan_guid[3], eiter->a.smartsan_guid[4],
+	    eiter->a.smartsan_guid[5], eiter->a.smartsan_guid[6],
+	    eiter->a.smartsan_guid[7], eiter->a.smartsan_guid[8],
+	    eiter->a.smartsan_guid[9], eiter->a.smartsan_guid[10],
+	    eiter->a.smartsan_guid[11], eiter->a.smartsan_guid[12],
+	    eiter->a.smartsan_guid[13], eiter->a.smartsan_guid[14],
+	    eiter->a.smartsan_guid[15]);
+
+	/* Smart SAN Version (populate "Smart SAN Version 1.0") */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_VERSION);
+	sprintf(eiter->a.smartsan_version, "%s", "Smart SAN Version 1.0");
+	alen = strlen(eiter->a.smartsan_version);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f8,
+	    "Smart SAN Version = %s\n", eiter->a.smartsan_version);
+
+	/* Smart SAN Product Name (Specify Adapter Model No) */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_PROD_NAME);
+	sprintf(eiter->a.smartsan_prod_name, "ISP%04x", ha->pdev->device);
+	alen = strlen(eiter->a.smartsan_prod_name);
+	alen += 4 - (alen & 3);
+	eiter->len = cpu_to_be16(4 + alen);
+	size += 4 + alen;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f9,
+	    "Smart SAN Prod Name = %s\n", eiter->a.smartsan_prod_name);
+
+	/* Smart SAN Port Info.. Specify 01-Physical, 02-NPIV, 03-SRIOV */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_PORT_INFO);
+	eiter->a.smartsan_port_info = cpu_to_be32(1);
+	if (vha->vp_idx != 0)
+		eiter->a.smartsan_port_info = cpu_to_be32(2);
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20fa,
+	    "Smart SAN Port Info: %x\n", cpu_to_be32(eiter->a.smartsan_port_info));
+
+	/* Smart SAN QoS Support */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_QOS_SUPPORT);
+	eiter->a.smartsan_qos_support = QLA_QOS_NO_SUPP;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20fb,
+	    "Smart SAN QoS Support = %d\n", eiter->a.smartsan_qos_support);
+
+	/* Smart SAN Security Supporrt */
+	eiter = entries + size;
+	eiter->type = __constant_cpu_to_be16(FDMI_SMARTSAN_SECURITY_SUPPORT);
+	eiter->a.smartsan_security_support = 0;
+	eiter->len = cpu_to_be16(4 + 4);
+	size += 4 + 4;
+
+	ql_dbg(ql_dbg_disc, vha, 0x20fc,
+	    "Smart SAN Security Support = %d\n", eiter->a.smartsan_security_support);
+
+	/* Update MS request size. */
+	qla2x00_update_ms_fdmi_iocb(vha, size + 16);
+
+	ql_dbg(ql_dbg_disc, vha, 0x20f1,
+	    "RPA portname = %016llx.\n",
+	    wwn_to_u64(ct_req->req.rpa2.port_name));
+	ql_dump_buffer(ql_dbg_disc + ql_dbg_buffer, vha, 0x20f2,
+	    entries, size);
+
+	/* Execute MS IOCB */
+	rval = qla2x00_issue_iocb(vha, ha->ms_iocb, ha->ms_iocb_dma,
+	    sizeof(ms_iocb_entry_t));
+	if (rval != QLA_SUCCESS) {
+		/*EMPTY*/
+		ql_dbg(ql_dbg_disc, vha, 0x20f3,
+		    "RPA FDMI v2 with Smart SAN issue IOCB failed (%d).\n", rval);
+	} else if (qla2x00_chk_ms_status(vha, ms_pkt, ct_rsp, "RPA") !=
+	    QLA_SUCCESS) {
+		rval = QLA_FUNCTION_FAILED;
+		if (ct_rsp->header.reason_code == CT_REASON_CANNOT_PERFORM &&
+		    ct_rsp->header.explanation_code ==
+		    CT_EXPL_ALREADY_REGISTERED) {
+			ql_dbg(ql_dbg_disc, vha, 0x20f4,
+			    "RPA FDMI v2 already registered\n");
+			rval = QLA_ALREADY_REGISTERED;
+		} else {
+			ql_dbg(ql_dbg_disc, vha, 0x20e1,
+			    "RPA FDMI v2 with Smart SAN failed, CT Reason code: 0x%x, CT Explanation 0x%x\n",
+			    ct_rsp->header.reason_code,
+			    ct_rsp->header.explanation_code);
+		}
+	} else {
+		ql_dbg(ql_dbg_disc, vha, 0x20f5,
+		    "HP RPA FDMIv2 with Smart SAN exiting normally.\n");
+	}
+
+	return rval;
+}
+
 /**
  * qla2x00_fdmiv2_rpa() -
  * @ha: HA context
@@ -2177,8 +3012,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 		    FDMI_PORT_SPEED_1GB);
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20bb,
-	    "Supported Port Speed = %x.\n", eiter->a.sup_speed);
+	ql_dbg(ql_dbg_disc, vha, 0x20bb, "Supported Port Speed = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.sup_speed));
 
 	/* Current speed. */
 	eiter = entries + size;
@@ -2220,8 +3055,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	}
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20bc,
-	    "Current_Speed = %x.\n", eiter->a.cur_speed);
+	ql_dbg(ql_dbg_disc, vha, 0x20e9, "Current_Speed = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.cur_speed));
 
 	/* Max frame size. */
 	eiter = entries + size;
@@ -2234,7 +3069,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20bd,
-	    "Max_Frame_Size = %x.\n", eiter->a.max_frame_size);
+	    "Max_Frame_Size = %x.\n", cpu_to_be32(eiter->a.max_frame_size));
 
 	/* OS device name. */
 	eiter = entries + size;
@@ -2254,8 +3089,12 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
 	p_sysid = utsname();
 	if (p_sysid) {
-		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
-		    "%s", p_sysid->nodename);
+		if (!strncmp(p_sysid->nodename, "(none)", 6))
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", "Linux");
+		else
+			snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
+			    "%s", p_sysid->nodename);
 	} else {
 		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
 		    "%s", fc_host_system_hostname(vha->host));
@@ -2309,7 +3148,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20c3,
-	    "Port Type = %x.\n", eiter->a.port_type);
+	    "Port Type = %x.\n", __constant_cpu_to_be32(eiter->a.port_type));
 
 	/* Class of Service  */
 	eiter = entries + size;
@@ -2319,7 +3158,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20c4,
-	    "Supported COS = %08x\n", eiter->a.port_supported_cos);
+	    "Supported COS = %08x\n", __constant_cpu_to_be32(eiter->a.port_supported_cos));
 
 	/* Port Fabric Name */
 	eiter = entries + size;
@@ -2348,12 +3187,12 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	/* Port State */
 	eiter = entries + size;
 	eiter->type = __constant_cpu_to_be16(FDMI_PORT_STATE);
-	eiter->a.port_state = __constant_cpu_to_be32(1);
+	eiter->a.port_state = __constant_cpu_to_be32(1);;
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20c7,
-	    "Port State = %x.\n", eiter->a.port_state);
+	ql_dbg(ql_dbg_disc, vha, 0x20c7, "Port State = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.port_state));
 
 	/* Number of Ports */
 	eiter = entries + size;
@@ -2362,8 +3201,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x2021,
-	    "Number of ports = %x.\n", eiter->a.num_ports);
+	ql_dbg(ql_dbg_disc, vha, 0x2021, "Number of ports = %x.\n",
+	    __constant_cpu_to_be32(eiter->a.num_ports));
 
 	/* Port Id */
 	eiter = entries + size;
@@ -2373,7 +3212,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20c8,
-	    "Port Id = %x.\n", eiter->a.port_id);
+	    "Port Id = %x.\n", __constant_cpu_to_be32(eiter->a.port_id));
 
 	/* Update MS request size. */
 	qla2x00_update_ms_fdmi_iocb(vha, size + 16);
@@ -2434,6 +3273,19 @@ qla2x00_fdmi_register(scsi_qla_host_t *vha)
 	if (rval)
 		return rval;
 
+	if (vha->vp_idx > 0) {
+		if (ql2xsmartsan)
+			rval = qla2x00_fdmi_rprt(vha, 2);
+
+		if (rval || !ql2xsmartsan)
+			rval = qla2x00_fdmi_rprt(vha, 1);
+
+		if (rval)
+			rval = qla2x00_fdmi_rprt(vha, 0);
+
+		return rval;
+	}
+
 	rval = qla2x00_fdmiv2_rhba(vha);
 	if (rval) {
 		if (rval != QLA_ALREADY_REGISTERED)
@@ -2447,7 +3299,11 @@ qla2x00_fdmi_register(scsi_qla_host_t *vha)
 		if (rval)
 			goto try_fdmi;
 	}
-	rval = qla2x00_fdmiv2_rpa(vha);
+
+	if (ql2xsmartsan)
+		rval = qla2x00_fdmiv2_smartsan_rpa(vha);
+	else
+		rval = qla2x00_fdmiv2_rpa(vha);
 	if (rval)
 		goto try_fdmi;
 
@@ -2468,6 +3324,8 @@ try_fdmi:
 			return rval;
 	}
 	rval = qla2x00_fdmi_rpa(vha);
+	if (rval)
+		return rval;
 out:
 	return rval;
 }

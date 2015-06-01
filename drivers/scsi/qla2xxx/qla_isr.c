@@ -21,6 +21,13 @@ static void qla2x00_status_cont_entry(struct rsp_que *, sts_cont_entry_t *);
 static void qla2x00_error_entry(scsi_qla_host_t *, struct rsp_que *,
 	sts_entry_t *);
 
+void qla24xx_purex_iocb(scsi_qla_host_t *vha, struct req_que *req,
+    struct sts_entry_24xx *pkt)
+{
+	memcpy(vha->purex_data, pkt, PUREX_ENTRY_SIZE);
+	set_bit(PROCESS_PUREX_IOCB, &vha->dpc_flags);
+}
+
 /**
  * qla2100_intr_handler() - Process interrupts for the ISP2100 and ISP2200.
  * @irq:
@@ -585,6 +592,17 @@ qla2x00_is_a_vp_did(scsi_qla_host_t *vha, uint32_t rscn_entry)
 	return ret;
 }
 
+static inline fc_port_t *
+qla2x00_find_fcport_by_loopid(scsi_qla_host_t *vha, uint16_t loop_id)
+{
+	fc_port_t *fcport;
+
+	list_for_each_entry(fcport, &vha->vp_fcports, list)
+		if (fcport->loop_id == loop_id)
+			return fcport;
+	return NULL;
+}
+
 /**
  * qla2x00_async_event() - Process aynchronous events.
  * @ha: SCSI driver HA context
@@ -811,7 +829,6 @@ skip_rio:
 			 * NVRAM in case of FA-WWPN capable ISP.
 			 * Restore for Physical Port only
 			 */
-
 			if (!vha->vp_idx) {
 				if (ha->flags.fawwpn_enabled) {
 					void *wwpn = ha->init_cb->port_name;
@@ -899,9 +916,6 @@ skip_rio:
 		if (!(test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags)))
 			set_bit(RESET_MARKER_NEEDED, &vha->dpc_flags);
 
-		set_bit(REGISTER_FC4_NEEDED, &vha->dpc_flags);
-		set_bit(REGISTER_FDMI_NEEDED, &vha->dpc_flags);
-
 		ha->flags.gpsc_supported = 1;
 		vha->flags.management_server_logged_in = 0;
 		break;
@@ -951,11 +965,29 @@ skip_rio:
 			(mb[1] != 0xffff)) && vha->vp_idx != (mb[3] & 0xff))
 			break;
 
-		/* Global event -- port logout or port unavailable. */
-		if (mb[1] == 0xffff && mb[2] == 0x7) {
+		if (mb[2] == 0x7) {
 			ql_dbg(ql_dbg_async, vha, 0x5010,
-			    "Port unavailable %04x %04x %04x.\n",
+			    "Port %s %04x %04x %04x.\n",
+			    mb[1] == 0xffff ? "unavailable" : "logout",
 			    mb[1], mb[2], mb[3]);
+
+			if (mb[1] == 0xffff)
+				goto global_port_update;
+
+			/* Port logout */
+			fcport = qla2x00_find_fcport_by_loopid(vha, mb[1]);
+			if (!fcport)
+				break;
+			if (atomic_read(&fcport->state) != FCS_ONLINE)
+				break;
+			ql_dbg(ql_dbg_async, vha, 0x5088,
+			    "Marking port lost loopid=%04x portid=%06x.\n",
+			    fcport->loop_id, fcport->d_id.b24);
+			qla2x00_mark_device_lost(fcport->vha, fcport, 1, 1);
+			break;
+
+global_port_update:
+			/* Port unavailable. */
 			ql_log(ql_log_warn, vha, 0x505e,
 			    "Link is offline.\n");
 
@@ -1022,6 +1054,11 @@ skip_rio:
 		if (qla_target.tgt_async_event)
 			qla_target.tgt_async_event(mb[0], vha, mb);
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
+		set_bit(REGISTER_FC4_NEEDED, &vha->dpc_flags);
+		set_bit(REGISTER_FDMI_NEEDED, &vha->dpc_flags);
+		vha->flags.management_server_logged_in = 0;
+		ha->flags.gpsc_supported = 1;
+		qla2xxx_wake_dpc(vha);
 		break;
 
 	case MBA_RSCN_UPDATE:		/* State Change Registration */
@@ -1817,8 +1854,8 @@ qla2x00_process_response_queue(struct rsp_que *rsp)
 		default:
 			/* Type Not Supported. */
 			ql_log(ql_log_warn, vha, 0x504a,
-			    "Received unknown response pkt type %x "
-			    "entry status=%x.\n",
+			    "%s: Received unknown response pkt type %x "
+			    "entry status=%x.\n", __func__,
 			    pkt->entry_type, pkt->entry_status);
 			break;
 		}
@@ -2861,11 +2898,14 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 			break;
 #endif /* TODO */
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
+		case PUREX_IOCB_TYPE:
+		    qla24xx_purex_iocb(vha, rsp->req, pkt);
+		    break;
 		default:
 			/* Type Not Supported. */
 			ql_log(ql_log_warn, vha, 0x5082,
-			    "Received unknown response pkt type %x "
-			    "entry status=%x.\n",
+			    "%s: Received unknown response pkt type %x "
+			    "entry status=%x.\n", __func__,
 			    pkt->entry_type, pkt->entry_status);
 			break;
 		}

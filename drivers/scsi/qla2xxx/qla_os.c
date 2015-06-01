@@ -133,11 +133,18 @@ MODULE_PARM_DESC(ql2xshiftctondsd,
 		"Set to control shifting of command type processing "
 		"based on total number of SG elements.");
 
-int ql2xfdmienable=1;
+int ql2xfdmienable = 1;
 module_param(ql2xfdmienable, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(ql2xfdmienable,
 		"Enables FDMI registrations. "
 		"0 - no FDMI. Default is 1 - perform FDMI.");
+
+int ql2xsmartsan;
+module_param(ql2xsmartsan, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(ql2xsmartsan,
+		"Send SmartSAN Management Attributes for FDMI Registration."
+		" Default is 0 - No SmartSAN registration,"
+		" 1 - Register SmartSAN Management Attributes.");
 
 #define MAX_Q_DEPTH    32
 static int ql2xmaxqdepth = MAX_Q_DEPTH;
@@ -2225,7 +2232,6 @@ static struct isp_operations qla8044_isp_ops = {
 	.abort_isp		= qla8044_abort_isp,
 	.iospace_config		= qla82xx_iospace_config,
 	.initialize_adapter	= qla2x00_initialize_adapter,
-
 };
 
 static struct isp_operations qla83xx_isp_ops = {
@@ -2235,7 +2241,7 @@ static struct isp_operations qla83xx_isp_ops = {
 	.config_rings		= qla24xx_config_rings,
 	.reset_adapter		= qla24xx_reset_adapter,
 	.nvram_config		= qla81xx_nvram_config,
-	.update_fw_options	= qla81xx_update_fw_options,
+	.update_fw_options	= qla83xx_update_fw_options,
 	.load_risc		= qla81xx_load_risc,
 	.pci_info_str		= qla24xx_pci_info_str,
 	.fw_version_str		= qla24xx_fw_version_str,
@@ -2311,7 +2317,7 @@ static struct isp_operations qla27xx_isp_ops = {
 	.config_rings		= qla24xx_config_rings,
 	.reset_adapter		= qla24xx_reset_adapter,
 	.nvram_config		= qla81xx_nvram_config,
-	.update_fw_options	= qla81xx_update_fw_options,
+	.update_fw_options	= qla83xx_update_fw_options,
 	.load_risc		= qla81xx_load_risc,
 	.pci_info_str		= qla24xx_pci_info_str,
 	.fw_version_str		= qla24xx_fw_version_str,
@@ -3029,7 +3035,6 @@ que_init:
 		goto probe_init_failed;
 	}
 
-
 	/* Set up the irqs */
 	ret = qla2x00_request_irqs(ha, rsp);
 	if (ret)
@@ -3123,6 +3128,11 @@ que_init:
 		ret = -ENODEV;
 		goto probe_failed;
 	}
+
+	base_vha->purex_data = kzalloc(PUREX_ENTRY_SIZE, GFP_KERNEL);
+	if (!base_vha->purex_data)
+		ql_log(ql_log_warn, base_vha, 0x7118,
+		    "Failed to allocate memory for PUREX data\n");
 
 	if (IS_QLAFX00(ha))
 		host->can_queue = QLAFX00_MAX_CANQUEUE;
@@ -3541,6 +3551,8 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	/* Laser should be disabled only for ISP2031 */
 	if (IS_QLA2031(ha))
 		qla83xx_disable_laser(base_vha);
+
+	kfree(base_vha->purex_data);
 
 	/* Disable timer */
 	if (base_vha->timer_active)
@@ -5030,6 +5042,388 @@ retry_lock2:
 	return;
 }
 
+#define SFP_DEV_SIZE		256
+#define SFP_RTDI_LEN		 64
+#define SFP_RTDI_OFF		 96
+
+/* Read SFP data for replying back to the RDP request from
+ * Fabric switch
+ */
+int qla2x00_read_smartsan_sfp_data(scsi_qla_host_t *vha, uint8_t *sfp_out_buf,
+    uint16_t dev_addr, uint16_t off, uint16_t len)
+{
+	struct qla_hw_data *ha = vha->hw;
+	uint8_t	*sfp_data = NULL;
+	dma_addr_t sfp_dma;
+	int rval = QLA_SUCCESS;
+
+	sfp_data = dma_alloc_coherent(&ha->pdev->dev, DMA_POOL_SIZE,
+	     &sfp_dma, GFP_KERNEL);
+
+	if (!sfp_data) {
+		ql_log(ql_log_warn, vha, 0x7119,
+		    "Unable to allocate memory for SFP read-data.\n");
+		return 0;
+	}
+
+	rval = qla2x00_read_sfp(vha, sfp_dma, sfp_data, dev_addr,
+	    off, SFP_RTDI_LEN, 0);
+	if (rval != QLA_SUCCESS) {
+		ql_log(ql_log_warn, vha, 0x7100,
+		    "Unable to read SFP data (%x/%x/%x).\n", rval,
+		    dev_addr, SFP_RTDI_OFFSET);
+		goto end;
+	}
+	memcpy(sfp_out_buf, sfp_data, len);
+
+	ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x0180,
+	    "%s: Dump SFP Data: Addr=0x%02x, offset=%x Length=%d\n",
+	    __func__, dev_addr, off, len);
+
+	ql_dump_buffer(ql_dbg_init + ql_dbg_verbose, vha, 0x0181,
+	    (uint8_t *)sfp_out_buf, len);
+
+end:
+	dma_free_coherent(&ha->pdev->dev, DMA_POOL_SIZE,
+	    sfp_data, sfp_dma);
+
+	return rval;
+}
+
+/*
+ * Function Name: qla24xx_process_iocb
+ *
+ * Description:
+ * Prepare a RDP response and send it to be the Fabric switch
+ *
+ * PARAMETERS:
+ * vha:	SCSI qla host
+ * purex: RDP request erceived by the HBA
+ */
+int qla24xx_process_purex_iocb(struct scsi_qla_host *vha,
+    void *pkt)
+{
+	struct qla_hw_data *ha = vha->hw;
+	struct rdp_req_payload *rdp_req;
+	dma_addr_t rsp_els_dma;
+	dma_addr_t rsp_payload_dma;
+	struct els_entry_24xx *rsp_els;
+	struct rdp_rsp_payload *rsp_payload;
+	struct purex_entry_24xx *purex;
+	uint8_t *sfp_out_buf = NULL;
+	uint8_t transceiver_codes[4];
+	struct link_statistics *stat_buf;
+	dma_addr_t stat_dma;
+	int rval = QLA_SUCCESS;
+	uint16_t sfp_flags = 0;
+
+	ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x0182,
+	    "%s: Enter\n", __func__);
+
+	sfp_out_buf = kzalloc(SFP_RTDI_OFFSET, GFP_KERNEL);
+	if (!sfp_out_buf)
+		return -ENOMEM;
+
+	purex = (struct purex_entry_24xx *)pkt;
+
+	ql_dump_buffer(ql_dbg_init + ql_dbg_verbose, vha, 0x0183,
+	    (uint8_t *)purex, PUREX_ENTRY_SIZE);
+
+	rdp_req = (struct rdp_req_payload *)purex->els_frame_payload;
+
+	rsp_els = dma_alloc_coherent(&ha->pdev->dev,
+	    DMA_POOL_SIZE, &rsp_els_dma, GFP_KERNEL);
+
+	rsp_payload = dma_alloc_coherent(&ha->pdev->dev,
+	    DMA_POOL_SIZE, &rsp_payload_dma, GFP_KERNEL);
+
+	ql_dbg(ql_dbg_init, vha, 0x0185,
+	    "Purex Data: nport_hndl: %x, vp_idx: %x, rx_xchg_addr: %x\n",
+	    purex->nport_handle, purex->vp_idx, purex->rx_xchg_addr);
+
+	/* Prepare Response IOCB */
+	rsp_els->entry_type = ELS_IOCB_TYPE;
+	rsp_els->entry_count = 1;
+	rsp_els->sys_define = 0;
+	rsp_els->entry_status = 0;
+	rsp_els->handle = 0;
+	rsp_els->nport_handle = purex->nport_handle;
+	rsp_els->tx_dsd_count = cpu_to_be16(1);
+	rsp_els->vp_index = purex->vp_idx;
+	rsp_els->sof_type = EST_SOFI3;
+	rsp_els->rx_xchg_address = purex->rx_xchg_addr;
+	rsp_els->rx_dsd_count = 0;
+	rsp_els->opcode = swab32(rdp_req->els_request);
+
+	rsp_els->port_id[0] = purex->s_id[0];
+	rsp_els->port_id[1] = purex->s_id[1];
+	rsp_els->port_id[2] = purex->s_id[2];
+
+	rsp_els->control_flags = EPD_ELS_ACC;   /* ELS ACC Response */
+
+	rsp_els->rx_byte_count = 0;
+	rsp_els->tx_byte_count = sizeof(struct rdp_rsp_payload);
+
+	rsp_els->tx_address[0] = cpu_to_le32(LSD(rsp_payload_dma));
+	rsp_els->tx_address[1] = cpu_to_le32(MSD(rsp_payload_dma));
+	rsp_els->tx_len = cpu_to_le32(sizeof(struct rdp_rsp_payload));
+
+	rsp_els->rx_address[0] = 0;
+	rsp_els->rx_address[1] = 0;
+	rsp_els->rx_len = 0;
+
+	/* Prepare the Response Payload */
+	rsp_payload->cmd = cpu_to_le32(0x2);        /* LS_ACC */
+
+	rsp_payload->desc_list_len =
+	    cpu_to_be32(sizeof(struct rdp_rsp_payload) - 8);
+
+	/* Link service Request Info Descriptor */
+	rsp_payload->ls_req_info_desc.desc_tag = cpu_to_be32(0x1);
+	rsp_payload->ls_req_info_desc.desc_len =
+	    cpu_to_be32(sizeof(rsp_payload->ls_req_info_desc) - 8);
+	rsp_payload->ls_req_info_desc.req_payload_word_0 =
+	   cpu_to_be32(rdp_req->els_request);
+
+	/* Link service Request Info Descriptor */
+	rsp_payload->ls_req_info_desc2.desc_tag = cpu_to_be32(0x1);
+	rsp_payload->ls_req_info_desc2.desc_len =
+	    cpu_to_be32(sizeof(rsp_payload->ls_req_info_desc2) - 8);
+	rsp_payload->ls_req_info_desc2.req_payload_word_0 =
+	   cpu_to_be32(rdp_req->els_request);
+
+	/* SFT Diagnostic param Descriptor */
+	rval = qla2x00_read_smartsan_sfp_data(vha, sfp_out_buf,
+	    0xa2, SFP_RTDI_OFFSET, SFP_BLOCK_SIZE);
+
+	if (rval)
+		ql_log(ql_log_warn, vha, 0x7120,
+		    "Failed SFP Read diagnostic data 0x%x\n", rval);
+
+	rsp_payload->sfp_diag_desc.desc_tag = __constant_cpu_to_be32(0x10000);
+	rsp_payload->sfp_diag_desc.desc_len =
+	    __constant_cpu_to_be32(sizeof(rsp_payload->sfp_diag_desc) - 8);
+
+	rsp_payload->sfp_diag_desc.temperature =
+	    cpu_to_be16((sfp_out_buf[0] << 0x8) | sfp_out_buf[1]);
+
+	rsp_payload->sfp_diag_desc.vcc =
+	    cpu_to_be16((sfp_out_buf[2] << 0x8) | sfp_out_buf[3]);
+
+	rsp_payload->sfp_diag_desc.tx_bias =
+	    cpu_to_be16((sfp_out_buf[4] << 0x8) | sfp_out_buf[5]);
+
+	rsp_payload->sfp_diag_desc.tx_power =
+	    cpu_to_be16((sfp_out_buf[6] << 0x8) | sfp_out_buf[7]);
+
+	rsp_payload->sfp_diag_desc.rx_power =
+	    cpu_to_be16((sfp_out_buf[8] << 0x8) | sfp_out_buf[9]);
+
+	/* SFP Diagnostrics - SFP Flags and SFP Speed */
+	memset(transceiver_codes, 0, 4);
+	rval = qla2x00_read_smartsan_sfp_data(vha, transceiver_codes, 0xa0,
+	    0x7, 4);
+	if (rval)
+		ql_log(ql_log_warn, vha, 0x7121,
+		    "Failed to red SFP data, flags=0x%x\n", rval);
+
+	ql_dbg(ql_dbg_init, vha, 0x0186,
+	    "%s: transceiver_codes %x %x %x %x\n",
+	    __func__, transceiver_codes[0], transceiver_codes[1],
+	    transceiver_codes[2], transceiver_codes[3]);
+
+	/* SFP flags - Bit 3-0 port Tx Tupre */
+	if ((transceiver_codes[0] & BIT_2) || (transceiver_codes[1] & BIT_6) ||
+	    (transceiver_codes[1] & BIT_5)) {
+		/* Short Wave Laser - 001b */
+		sfp_flags |= BIT_0;
+	} else if (transceiver_codes[0] & BIT_1) {
+		/* long Wave laser LC 1310nm = 001b */
+		sfp_flags |= BIT_0;
+		sfp_flags |= BIT_1;
+	}
+
+	/* SFP connector Type */
+	memset(transceiver_codes, 0, 4);
+	rval = qla2x00_read_smartsan_sfp_data(vha, transceiver_codes, 0xa0,
+	    0x0, 4);
+	if (rval)
+		ql_log(ql_log_warn, vha, 0x7155,
+		    "Failed to read SFP type, flags=0x%x\n", rval);
+
+	if (transceiver_codes[0] == 0x3)
+		sfp_flags |= BIT_6; /* SFP or SFP+ */
+
+	sfp_flags |= BIT_4; /* optical Port */
+	rsp_payload->sfp_diag_desc.sfp_flags = cpu_to_be16(sfp_flags);
+
+#define RDP_PORT_SPEED_1GB		BIT_15
+#define RDP_PORT_SPEED_2GB		BIT_14
+#define RDP_PORT_SPEED_4GB		BIT_13
+#define RDP_PORT_SPEED_10GB		BIT_12
+#define RDP_PORT_SPEED_8GB		BIT_11
+#define RDP_PORT_SPEED_16GB		BIT_10
+#define RDP_PORT_SPEED_32GB		BIT_9
+#define RDP_PORT_SPEED_UNKNOWN		BIT_0
+
+	/* Port Speed Descriptor */
+	rsp_payload->port_speed_desc.desc_tag =
+	    __constant_cpu_to_be32(0x10001);
+	rsp_payload->port_speed_desc.desc_len =
+	    __constant_cpu_to_be32(sizeof(rsp_payload->port_speed_desc) - 8);
+
+	if (IS_CNA_CAPABLE(ha))
+		rsp_payload->port_speed_desc.speed_capab =
+		    __constant_cpu_to_be16(RDP_PORT_SPEED_10GB);
+	else if (IS_QLA27XX(ha))
+		rsp_payload->port_speed_desc.speed_capab =
+		    __constant_cpu_to_be16(RDP_PORT_SPEED_32GB |
+			RDP_PORT_SPEED_16GB | RDP_PORT_SPEED_8GB |
+			RDP_PORT_SPEED_4GB);
+	else if (IS_QLA2031(ha))
+		rsp_payload->port_speed_desc.speed_capab =
+		    __constant_cpu_to_be16(RDP_PORT_SPEED_16GB |
+			RDP_PORT_SPEED_8GB | RDP_PORT_SPEED_4GB);
+	else if (IS_QLA25XX(ha))
+		rsp_payload->port_speed_desc.speed_capab =
+		    __constant_cpu_to_be16(RDP_PORT_SPEED_1GB |
+			RDP_PORT_SPEED_2GB | RDP_PORT_SPEED_4GB |
+			RDP_PORT_SPEED_8GB);
+	else if (IS_QLA24XX_TYPE(ha))
+		rsp_payload->port_speed_desc.speed_capab =
+		    __constant_cpu_to_be16(RDP_PORT_SPEED_1GB |
+			RDP_PORT_SPEED_2GB | RDP_PORT_SPEED_4GB);
+
+	switch (ha->link_data_rate) {
+	case PORT_SPEED_1GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_1GB);
+	    break;
+	case PORT_SPEED_2GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_2GB);
+	    break;
+	case PORT_SPEED_4GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_4GB);
+	    break;
+	case PORT_SPEED_8GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_8GB);
+	    break;
+	case PORT_SPEED_10GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_10GB);
+	    break;
+	case PORT_SPEED_16GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_16GB);
+	    break;
+	case PORT_SPEED_32GB:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_32GB);
+	    break;
+	default:
+	    rsp_payload->port_speed_desc.operating_speed =
+		__constant_cpu_to_be16(RDP_PORT_SPEED_UNKNOWN);
+	    break;
+	}
+
+	stat_buf = dma_alloc_coherent(&ha->pdev->dev,
+	    DMA_POOL_SIZE, &stat_dma, DMA_POOL_SIZE);
+
+	/* Send mailbox cmd to get Link Statistics */
+	rval = qla24xx_get_isp_stats(vha, stat_buf, stat_dma);
+	if (rval != QLA_SUCCESS) {
+		ql_log(ql_log_warn, vha, 0x7124,
+		    "%s(%ld): ERROR mailbox failed. rval=%x.\n", __func__,
+		    vha->host_no, rval);
+		if (rval == BIT_0)
+			rval = ENOMEM;
+		else if (rval == BIT_1)
+			rval = EIO;
+		else
+			rval = EIO;
+	} else {
+		ql_log(ql_log_info, vha, 0x7125, "Stats Mailbox successful.\n");
+	}
+
+	/* Link Error Status Descriptor */
+	rsp_payload->ls_err_desc.desc_tag = __constant_cpu_to_be32(0x10002);
+	rsp_payload->ls_err_desc.desc_len =
+	    __constant_cpu_to_be32(sizeof(rsp_payload->ls_err_desc) - 8);
+
+	rsp_payload->ls_err_desc.link_fail_cnt =
+	    cpu_to_be32(stat_buf->link_fail_cnt);
+	rsp_payload->ls_err_desc.loss_sync_cnt =
+	    cpu_to_be32(stat_buf->loss_sync_cnt);
+	rsp_payload->ls_err_desc.loss_sig_cnt =
+	    cpu_to_be32(stat_buf->loss_sig_cnt);
+	rsp_payload->ls_err_desc.prim_seq_err_cnt =
+	    cpu_to_be32(stat_buf->prim_seq_err_cnt);
+	rsp_payload->ls_err_desc.inval_xmit_word_cnt =
+	    cpu_to_be32(stat_buf->inval_xmit_word_cnt);
+	rsp_payload->ls_err_desc.inval_crc_cnt =
+	    cpu_to_be32(stat_buf->inval_crc_cnt);
+	rsp_payload->ls_err_desc.pn_port_phy_type |= BIT_6;
+
+	/* Port Name Description for with diagnostic parameters
+	 * are being provided.
+	 */
+
+	rsp_payload->port_name_diag_desc.desc_tag =
+	    __constant_cpu_to_be32(0x10003);
+	rsp_payload->port_name_diag_desc.desc_len =
+	    __constant_cpu_to_be32(sizeof(rsp_payload->port_name_diag_desc) - 8);
+	memcpy(rsp_payload->port_name_diag_desc.WWNN, vha->node_name, WWN_SIZE);
+	memcpy(rsp_payload->port_name_diag_desc.WWPN, vha->port_name, WWN_SIZE);
+
+	 /* Port Name Description for the directly attached Fx_Port or Nx_Port.
+	  */
+	rsp_payload->port_name_direct_desc.desc_tag =
+	    __constant_cpu_to_be32(0x10003);
+	rsp_payload->port_name_direct_desc.desc_len =
+	    __constant_cpu_to_be32(sizeof(rsp_payload->port_name_direct_desc) - 8);
+	memcpy(rsp_payload->port_name_direct_desc.WWNN, vha->fabric_node_name,
+	    WWN_SIZE);
+	memcpy(rsp_payload->port_name_direct_desc.WWPN, vha->fabric_port_name,
+	    WWN_SIZE);
+
+	ql_dbg(ql_dbg_init, vha, 0x018c,
+	    "Sending the Response to the RDP packet.\n");
+	ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x018d,
+	    " -------- ELS RSP ------- \n");
+	ql_dump_buffer(ql_dbg_init + ql_dbg_verbose, vha, 0x018e,
+	    (uint8_t *) rsp_els, sizeof(struct els_entry_24xx));
+	ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x018f,
+	    " -------- ELS RSP PAYLOAD ------- \n");
+	ql_dump_buffer(ql_dbg_init + ql_dbg_verbose, vha, 0x0190,
+	    (uint8_t *)rsp_payload, sizeof(struct rdp_rsp_payload));
+
+	rval = qla2x00_issue_iocb(vha, rsp_els, rsp_els_dma, 0);
+
+	if (rval != QLA_SUCCESS) {
+		ql_log(ql_log_warn, vha, 0x7126,
+		    "%s: failed to issue IOCB (%x).\n", __func__, rval);
+	} else if (rsp_els->entry_status != 0) {
+		ql_log(ql_log_warn, vha, 0x7127,
+		    "%s: failed to complete IOCB -- error status (%x).\n",
+		    __func__, rsp_els->entry_status);
+		rval = QLA_FUNCTION_FAILED;
+	} else {
+		ql_dbg(ql_dbg_init, vha, 0x0191, "%s: done.\n", __func__);
+	}
+
+	dma_free_coherent(&ha->pdev->dev, DMA_POOL_SIZE, rsp_payload,
+	    rsp_payload_dma);
+	dma_free_coherent(&ha->pdev->dev, DMA_POOL_SIZE, rsp_els, rsp_els_dma);
+	dma_free_coherent(&ha->pdev->dev, DMA_POOL_SIZE, stat_buf, stat_dma);
+
+	kfree(sfp_out_buf);
+
+	return rval;
+}
+
 void
 qla83xx_idc_unlock(scsi_qla_host_t *base_vha, uint16_t requester_id)
 {
@@ -5628,6 +6022,13 @@ qla2x00_do_dpc(void *data)
 			    "ISP abort end.\n");
 		}
 
+               if (test_bit(PROCESS_PUREX_IOCB, &base_vha->dpc_flags) &&
+		   (atomic_read(&base_vha->loop_state) == LOOP_READY)) {
+		       qla24xx_process_purex_iocb(base_vha,
+			   base_vha->purex_data);
+		       clear_bit(PROCESS_PUREX_IOCB, &base_vha->dpc_flags);
+	       }
+
 		if (test_and_clear_bit(FCPORT_UPDATE_NEEDED,
 		    &base_vha->dpc_flags)) {
 			qla2x00_update_fcports(base_vha);
@@ -5730,6 +6131,7 @@ intr_on_check:
 			if (ha->beacon_blink_led == 1)
 				ha->isp_ops->beacon_blink(base_vha);
 		}
+
 
 		if (!IS_QLAFX00(ha))
 			qla2x00_do_dpc_all_vps(base_vha);
@@ -5944,7 +6346,8 @@ qla2x00_timer(scsi_qla_host_t *vha)
 	    test_bit(ISP_UNRECOVERABLE, &vha->dpc_flags) ||
 	    test_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags) ||
 	    test_bit(VP_DPC_NEEDED, &vha->dpc_flags) ||
-	    test_bit(RELOGIN_NEEDED, &vha->dpc_flags))) {
+	    test_bit(RELOGIN_NEEDED, &vha->dpc_flags) ||
+	    test_bit(PROCESS_PUREX_IOCB, &vha->dpc_flags))) {
 		ql_dbg(ql_dbg_timer, vha, 0x600b,
 		    "isp_abort_needed=%d loop_resync_needed=%d "
 		    "fcport_update_needed=%d start_dpc=%d "
@@ -5957,12 +6360,13 @@ qla2x00_timer(scsi_qla_host_t *vha)
 		ql_dbg(ql_dbg_timer, vha, 0x600c,
 		    "beacon_blink_needed=%d isp_unrecoverable=%d "
 		    "fcoe_ctx_reset_needed=%d vp_dpc_needed=%d "
-		    "relogin_needed=%d.\n",
+		    "relogin_needed=%d, Process_purex_iocb=%d.\n",
 		    test_bit(BEACON_BLINK_NEEDED, &vha->dpc_flags),
 		    test_bit(ISP_UNRECOVERABLE, &vha->dpc_flags),
 		    test_bit(FCOE_CTX_RESET_NEEDED, &vha->dpc_flags),
 		    test_bit(VP_DPC_NEEDED, &vha->dpc_flags),
-		    test_bit(RELOGIN_NEEDED, &vha->dpc_flags));
+		    test_bit(RELOGIN_NEEDED, &vha->dpc_flags),
+		    test_bit(PROCESS_PUREX_IOCB, &vha->dpc_flags));
 		qla2xxx_wake_dpc(vha);
 	}
 
