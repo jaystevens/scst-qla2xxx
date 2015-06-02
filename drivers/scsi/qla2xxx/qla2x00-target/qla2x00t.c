@@ -6515,15 +6515,15 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 				le16_to_cpu(inot->nport_handle));
 			}
 		} else {
-		/* 
+		/*
 		 * Initiator: F/W will Post DB event (AE8014) - personality
 		 * change query.
 		 */
 			TRACE_MGMT_DBG("ELS PRLI rcv portid=%06x hndl 0x%x -- NO MATCH",
-				sess->s_id.b24,
+				(sess)? sess->s_id.b24: 0,
 				le16_to_cpu(inot->nport_handle));
 			if (wwn_sess== NULL) {
-				TRACE_MGMT_DBG("ELS PRLI : No WWN match"); 
+				TRACE_MGMT_DBG("ELS PRLI : No WWN match");
 			}
 			res = 0;  /* No ack */
 		}
