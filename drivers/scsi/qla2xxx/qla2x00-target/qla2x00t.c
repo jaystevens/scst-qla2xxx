@@ -8651,6 +8651,10 @@ out_term:
 					0, 0);
 		break;
 
+	case Q2T_SESS_WORK_TERM_WCMD:
+	case Q2T_SESS_WORK_TERM:
+		break;
+
 	default:
 		sBUG_ON(1);
 		break;
