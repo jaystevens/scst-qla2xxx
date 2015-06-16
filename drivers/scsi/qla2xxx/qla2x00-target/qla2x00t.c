@@ -6415,7 +6415,7 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 		s_id[2] = iocb->port_id[0];
 		pid_sess = q2t_find_sess_by_s_id_include_deleted(tgt, s_id);
 		if (wwn)
-			wwn_sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
+			wwn_sess = q2t_find_sess_by_port_name_include_deleted(tgt, inot->port_name);
 		else
 			wwn_sess = q2t_find_sess_by_loop_id(tgt,
 				le16_to_cpu(inot->nport_handle));
@@ -6476,24 +6476,12 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			inot->port_id[2],inot->port_id[1],inot->port_id[0],
 			le16_to_cpu(inot->nport_handle));
 
-		/* if Portname/Nodename is valid */
-#if 0
-		if (!(iflags & BIT_4))
-			wwn = 0;
-#endif
-
 		s_id[0] = iocb->port_id[2];
 		s_id[1] = iocb->port_id[1];
 		s_id[2] = iocb->port_id[0];
 		sess = q2t_find_sess_by_s_id_include_deleted(tgt, s_id);
-		if (wwn)
-			wwn_sess = q2t_find_sess_by_port_name(tgt, inot->port_name);
-		else
-			wwn_sess = q2t_find_sess_by_loop_id(tgt,
-				le16_to_cpu(inot->nport_handle));
-
-		if (sess && wwn_sess && sess == wwn_sess) {	/* Matching PID and WWPN */
-			TRACE_MGMT_DBG("ELS PRLI SID and WWN match");
+		if (sess != NULL) {	/* Matching PID */
+			TRACE_MGMT_DBG("ELS PRLI SID match");
 			if (sess->login_state != Q2T_LOGIN_STATE_PLOGI_COMPLETED) {
 				TRACE_MGMT_DBG("ELS PRLI: PLOGI not completed portid=%06x hndl 0x%x",
 				sess->s_id.b24,
@@ -6502,11 +6490,6 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			} else {
 			sess->local = 0;
 			sess->login_state = Q2T_LOGIN_STATE_PRLI_COMPLETED;
-			sess->loop_id = le16_to_cpu(inot->nport_handle);
-			sess->s_id.b.domain = inot->port_id[2];
-			sess->s_id.b.area = inot->port_id[1];
-			sess->s_id.b.al_pa = inot->port_id[0];
-			sess->s_id.b.rsvd_1 = 0;
 			if (wd3_lo & BIT_7)
 				sess->conf_compl_supported = 1;
 
@@ -6522,9 +6505,6 @@ static int q24_handle_els(scsi_qla_host_t *vha, notify24xx_entry_t *iocb)
 			TRACE_MGMT_DBG("ELS PRLI rcv portid=%06x hndl 0x%x -- NO MATCH",
 				(sess)? sess->s_id.b24: 0,
 				le16_to_cpu(inot->nport_handle));
-			if (wwn_sess== NULL) {
-				TRACE_MGMT_DBG("ELS PRLI : No WWN match");
-			}
 			res = 0;  /* No ack */
 		}
 		break;
@@ -10243,6 +10223,9 @@ static void	q2t_update_sess(struct q2t_sess *sess, void *iocb)
 	sess->s_id.b.area = inot->port_id[1];
 	sess->s_id.b.al_pa = inot->port_id[0];
 	sess->s_id.b.rsvd_1 = 0;
+	if (sess->deleted) {
+		q2t_undelete_sess(sess);
+	}
 
 	if (sess->qla_fcport) {
 		sess->qla_fcport->d_id = sess->s_id;
