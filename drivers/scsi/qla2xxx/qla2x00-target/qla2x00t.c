@@ -8632,7 +8632,24 @@ out_term:
 		break;
 
 	case Q2T_SESS_WORK_TERM_WCMD:
+	{
+		uint32_t status;
+		struct q2t_cmd *cmd = prm->cmd;
+		ctio7_fw_entry_t *entry = (ctio7_fw_entry_t *)&cmd->rsp_pkt;
+		rc = 0;
+		status = le16_to_cpu(entry->status)|(entry->entry_status << 16);
+		q2t_term_ctio_exchange(vha, (void*)entry, cmd, status);
+		break;
+	}
 	case Q2T_SESS_WORK_TERM:
+	{
+		uint32_t status;
+		ctio7_fw_entry_t *entry = (ctio7_fw_entry_t *)&prm->tm_iocb;
+		rc = 0;
+		status = le16_to_cpu(entry->status)|(entry->entry_status << 16);
+		q2t_term_ctio_exchange(vha, (void*)&prm->tm_iocb, NULL, status);
+		break;
+	}
 		break;
 
 	default:
